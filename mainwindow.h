@@ -25,19 +25,7 @@
 #include <QProcessEnvironment>
 #include <QApplication>
 
-struct TimeAxisItem
-{
-    QString type;
-    bool isCompleted;
-};
-
-struct DateStudyData
-{
-    int studyHours = 0;
-    int completedProjects = 0;
-    int totalProjects = 0;
-    QMap<int, TimeAxisItem> timeAxisData;
-};
+#include "appdatas.h"
 
 class MainWindow : public QMainWindow
 {
@@ -62,12 +50,6 @@ private slots:
     void setStudyTargetHour(int targetHour);
 
 private:
-    void initSavePath();
-    void saveDataToFile();
-    void loadDataFromFile();
-    void initConfigFile();
-    void saveConfigToFile();
-    void loadConfigFromFile();
     void initUI();
     QWidget* createDayViewPage();
     QWidget* createMonthViewPage();
@@ -96,11 +78,6 @@ private:
     QDate m_currentDate;
     int m_currentYear;
     int m_currentMonth;
-    QString m_saveFilePath;
-    QString m_configFilePath;
-    QMap<QDate, DateStudyData> m_studyDataMap;
-    int m_maxContinuousDays = 0;
-    int m_studyTargetHour = 4;
 };
 
 #endif // MAINWINDOW_H
