@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include <QProcess>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -6,20 +7,394 @@ MainWindow::MainWindow(QWidget *parent)
     , m_currentYear(QDate::currentDate().year())
     , m_currentMonth(QDate::currentDate().month())
 {
-    initUI();
+    m_appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    m_appSettings = new QSettings(m_appDataPath + "/app_settings.ini", QSettings::IniFormat, this);
+    initSavePath();
+    initConfigFile();
+    loadDataFromFile();
+    loadConfigFromFile();
+    initSettings();  // ========== 修改1：提前加载配置 → 必须在UI和托盘初始化前 ==========
+    initUI();        // UI初始化后，才能对UI控件应用主题
+    applyTheme(m_themeType); // ========== 新增1：加载配置后，立即应用主题配色 ==========
+    initSystemTray();// 托盘初始化，此时m_isMinToTray已经是存档里的配置值
+
     loadDateData(m_currentDate);
     updateDayViewStats();
     generateMonthCalendar(m_currentYear, m_currentMonth);
-    this->setStyleSheet("QMainWindow{background-color: #F5F7FA;border: none;}");
+    // ========== 删除原默认样式 → 主题由applyTheme统一控制，防止样式冲突 ==========
 }
 
 MainWindow::~MainWindow()
 {
+    saveDataToFile();
+    saveConfigToFile();
+    saveSettings();
+}
+
+void MainWindow::initSavePath()
+{
+    QDir dir(m_appDataPath);
+    if(!dir.exists())
+    {
+        dir.mkpath(m_appDataPath);
+    }
+    m_saveFilePath = m_appDataPath + "/study_data.json";
+
+    QString userName = QProcessEnvironment::systemEnvironment().value("USERNAME");
+    qDebug() << "当前登录用户名：" << userName;
+    qDebug() << "当前学习数据存档路径：" << m_saveFilePath;
+}
+
+void MainWindow::initConfigFile()
+{
+    QDir dir(m_appDataPath);
+    if(!dir.exists())
+    {
+        dir.mkpath(m_appDataPath);
+    }
+    m_configFilePath = m_appDataPath + "/study_config.json";
+    qDebug() << "当前配置文件存档路径：" << m_configFilePath;
+}
+
+void MainWindow::saveConfigToFile()
+{
+    QJsonObject rootObj;
+    rootObj.insert("studyTargetHour", m_studyTargetHour);
+
+    QFile file(m_configFilePath);
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+    QJsonDocument doc(rootObj);
+    file.write(doc.toJson(QJsonDocument::Compact));
+    file.close();
+}
+
+void MainWindow::loadConfigFromFile()
+{
+    QFile file(m_configFilePath);
+    if(!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+
+    QByteArray data = file.readAll();
+    file.close();
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+    if(error.error != QJsonParseError::NoError) return;
+
+    QJsonObject rootObj = doc.object();
+    if(rootObj.contains("studyTargetHour"))
+    {
+        m_studyTargetHour = rootObj["studyTargetHour"].toInt();
+        if(m_studyTargetHour <1 || m_studyTargetHour>8) m_studyTargetHour =4;
+    }
+}
+
+void MainWindow::saveDataToFile()
+{
+    QJsonObject rootObj;
+    rootObj.insert("maxContinuousDays", m_maxContinuousDays);
+    QJsonObject dateObj;
+
+    QMap<QDate, DateStudyData>::const_iterator dateIt = m_studyDataMap.constBegin();
+    while(dateIt != m_studyDataMap.constEnd())
+    {
+        QDate date = dateIt.key();
+        DateStudyData data = dateIt.value();
+        QString dateStr = date.toString("yyyy-MM-dd");
+
+        QJsonObject studyObj;
+        studyObj.insert("studyHours", data.studyHours);
+        studyObj.insert("completedProjects", data.completedProjects);
+        studyObj.insert("totalProjects", data.totalProjects);
+
+        QJsonObject timeAxisObj;
+        QMap<int, TimeAxisItem>::const_iterator timeIt = data.timeAxisData.constBegin();
+        while(timeIt != data.timeAxisData.constEnd())
+        {
+            int hour = timeIt.key();
+            TimeAxisItem item = timeIt.value();
+            QJsonObject itemObj;
+            itemObj.insert("type", item.type);
+            itemObj.insert("isCompleted", item.isCompleted);
+            timeAxisObj.insert(QString::number(hour), itemObj);
+            ++timeIt;
+        }
+        studyObj.insert("timeAxisData", timeAxisObj);
+        dateObj.insert(dateStr, studyObj);
+        ++dateIt;
+    }
+    rootObj.insert("studyData", dateObj);
+
+    QFile file(m_saveFilePath);
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+    QJsonDocument doc(rootObj);
+    file.write(doc.toJson(QJsonDocument::Compact));
+    file.close();
+}
+
+void MainWindow::loadDataFromFile()
+{
+    QFile file(m_saveFilePath);
+    if(!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+
+    QByteArray data = file.readAll();
+    file.close();
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+    if(error.error != QJsonParseError::NoError) return;
+
+    QJsonObject rootObj = doc.object();
+    if(rootObj.contains("maxContinuousDays")) m_maxContinuousDays = rootObj["maxContinuousDays"].toInt();
+
+    if(rootObj.contains("studyData"))
+    {
+        QJsonObject dateObj = rootObj["studyData"].toObject();
+        QStringList dateList = dateObj.keys();
+        foreach (QString dateStr, dateList)
+        {
+            QDate date = QDate::fromString(dateStr, "yyyy-MM-dd");
+            if(!date.isValid()) continue;
+
+            QJsonObject studyObj = dateObj[dateStr].toObject();
+            DateStudyData studyData;
+            studyData.studyHours = studyObj["studyHours"].toInt();
+            studyData.completedProjects = studyObj["completedProjects"].toInt();
+            studyData.totalProjects = studyObj["totalProjects"].toInt();
+
+            QJsonObject timeAxisObj = studyObj["timeAxisData"].toObject();
+            QStringList hourList = timeAxisObj.keys();
+            foreach (QString hourStr, hourList)
+            {
+                bool ok;
+                int hour = hourStr.toInt(&ok);
+                if(!ok) continue;
+
+                QJsonObject itemObj = timeAxisObj[hourStr].toObject();
+                TimeAxisItem item;
+                item.type = itemObj["type"].toString();
+                item.isCompleted = itemObj["isCompleted"].toBool();
+                studyData.timeAxisData.insert(hour, item);
+            }
+            m_studyDataMap.insert(date, studyData);
+        }
+    }
+}
+
+void MainWindow::initSettings()
+{
+    // ========== 修改2：加载所有配置项后，立即执行【开机自启】的生效逻辑 ==========
+    m_isAutoStartup = m_appSettings->value("auto_startup", false).toBool();
+    setAutoStartup(m_isAutoStartup); // 关键：加载配置后，立即同步注册表，保证开机自启状态一致
+
+    m_isMinToTray = m_appSettings->value("min_to_tray", false).toBool();
+    m_themeType = m_appSettings->value("theme", 0).toInt();
+    // 移除原applyTheme，移到构造函数统一执行
+}
+
+void MainWindow::saveSettings()
+{
+    m_appSettings->setValue("auto_startup", m_isAutoStartup);
+    m_appSettings->setValue("min_to_tray", m_isMinToTray);
+    m_appSettings->setValue("theme", m_themeType);
+    m_appSettings->sync();
+}
+
+void MainWindow::applyTheme(int themeType)
+{
+    m_themeType = themeType;
+    QString mainStyle, progressStyle, btnStyle;
+    if(themeType == 0)
+    {
+        mainStyle = "QMainWindow{background-color: #F5F7FA;border: none;} QWidget{color:#333333;} QLabel{color:#333333;}";
+        progressStyle = "QProgressBar{border:none; border-radius:8px; height:26px; background-color:#ECF5FF; font-size:14px; font-weight:bold; color:black;}"
+                        "QProgressBar::chunk{background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9); border-radius:8px;}";
+    }
+    else if(themeType ==1)
+    {
+        mainStyle = "QMainWindow{background-color: #FFFFFF;border: none;} QWidget{color:#333333;} QLabel{color:#333333;}";
+        progressStyle = "QProgressBar{border:none; border-radius:8px; height:26px; background-color:#F0F0F0; font-size:14px; font-weight:bold; color:black;}"
+                        "QProgressBar::chunk{background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9); border-radius:8px;}";
+    }
+    else
+    {
+        mainStyle = "QMainWindow{background-color: #1E1E1E;border: none;} QWidget{color:#FFFFFF;} QLabel{color:#FFFFFF;}";
+        progressStyle = "QProgressBar{border:none; border-radius:8px; height:26px; background-color:#333333; font-size:14px; font-weight:bold; color:white;}"
+                        "QProgressBar::chunk{background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #0078D7,stop:1 #005A9E); border-radius:8px;}";
+    }
+    this->setStyleSheet(mainStyle);
+    m_dayProgressBar->setStyleSheet(progressStyle);
+    updateDayViewStats();
+}
+
+void MainWindow::setAutoStartup(bool isAuto)
+{
+    m_isAutoStartup = isAuto;
+    QSettings reg("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
+    QString appPath = QApplication::applicationFilePath().replace("/", "\\");
+    if(isAuto) reg.setValue("PlanThrough", appPath);
+    else reg.remove("PlanThrough");
+}
+
+void MainWindow::initSystemTray()
+{
+    m_systemTrayIcon = new QSystemTrayIcon(this);
+    m_systemTrayIcon->setIcon(QApplication::style()->standardIcon(QStyle::SP_ComputerIcon));
+    m_systemTrayIcon->setToolTip("学习计划打卡"); // 固定中文提示
+
+    m_trayMenu = new QMenu(this);
+    // 托盘菜单全局样式（已包含菜单项的颜色）
+    m_trayMenu->setStyleSheet(
+        "QMenu{background-color:#FFFFFF; border:1px solid #EEEEEE; border-radius:8px; padding:5px 0px;}"
+        "QMenu::item{color:#000000; font-size:14px; padding:6px 40px 6px 20px; margin:2px 5px; border-radius:4px;}"
+        "QMenu::item:selected{background-color:#ECF5FF; color:#000000;}"
+        "QMenu::separator{height:1px; background-color:#EEEEEE; margin:5px 0px;}"
+        );
+
+    QAction *showAct = new QAction("显示窗口", this);
+    QAction *exitAct = new QAction("退出程序", this);
+    // （删除QAction的setStyleSheet代码）
+
+    connect(showAct, &QAction::triggered, this, &MainWindow::showWindowFromTray);
+    connect(exitAct, &QAction::triggered, qApp, &QApplication::quit);
+    m_trayMenu->addAction(showAct);
+    m_trayMenu->addAction(exitAct);
+
+    m_systemTrayIcon->setContextMenu(m_trayMenu);
+    m_systemTrayIcon->show();
+    connect(m_systemTrayIcon, &QSystemTrayIcon::activated, this, &MainWindow::onTrayIconClicked);
+}
+
+void MainWindow::onTrayIconClicked(QSystemTrayIcon::ActivationReason reason)
+{
+    if(reason == QSystemTrayIcon::DoubleClick) showWindowFromTray();
+}
+
+void MainWindow::showWindowFromTray()
+{
+    this->showNormal();
+    this->activateWindow();
+    this->raise();
+    QScreen *screen = QGuiApplication::primaryScreen();
+    QRect screenRect = screen->availableGeometry();
+    this->move(screenRect.center() - this->rect().center());
+}
+
+void MainWindow::openSavePath()
+{
+    QDesktopServices::openUrl(QUrl::fromLocalFile(m_appDataPath));
+}
+
+void MainWindow::goToMsStoreRate()
+{
+    QDesktopServices::openUrl(QUrl("https://apps.microsoft.com/detail/9P7X9B7RKXDB?hl=neutral&gl=CN&ocid=pdpshare"));
+}
+
+void MainWindow::showSettingsWindow()
+{
+    QDialog *settingsDlg = new QDialog(this);
+    settingsDlg->setWindowTitle("软件设置");
+    settingsDlg->setFixedSize(450, 260);
+    settingsDlg->setModal(true);
+
+    // ========== 永久固定：白底黑字，永不跟随主题变化，优先级最高 ==========
+    settingsDlg->setStyleSheet(
+        "QDialog{background-color:#FFFFFF; border-radius:12px; border:1px solid #EEEEEE;}"
+        "QLabel{font-size:14px; color:#000000; font-weight:normal;}"
+        "QCheckBox{font-size:14px; color:#000000; padding:4px; background-color:transparent;}"
+        "QCheckBox::indicator{width:16px;height:16px;border:1px solid #CCCCCC;border-radius:3px;background-color:#FFFFFF;}"
+        "QCheckBox::indicator:checked{background-color:#2D8CF0;border-color:#2D8CF0;}"
+        "QComboBox{font-size:14px; color:#000000; height:30px; padding:0 8px; border:1px solid #DDDDDD; border-radius:6px; background-color:#FFFFFF;}"
+        "QComboBox::drop-down{border:none;}"
+        "QComboBox::down-arrow{width:12px;height:12px;}"
+        "QComboBox QAbstractItemView{background-color:#FFFFFF; color:#000000; border:1px solid #DDDDDD; selection-background-color:#ECF5FF; selection-color:#000000;}"
+        "QPushButton{font-size:14px; padding:6px 12px; border-radius:6px; border:none; color:#FFFFFF;}"
+        "QPushButton:hover{opacity:0.9;}"
+        "QPushButton:pressed{opacity:0.8;}"
+        );
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(settingsDlg);
+    mainLayout->setSpacing(18);
+    mainLayout->setContentsMargins(20,20,20,20);
+
+    QHBoxLayout *autoStartLayout = new QHBoxLayout;
+    QCheckBox *autoStartCb = new QCheckBox("开机自动启动");
+    autoStartCb->setChecked(m_isAutoStartup);
+    autoStartLayout->addWidget(autoStartCb);
+    autoStartLayout->addStretch();
+    connect(autoStartCb, &QCheckBox::stateChanged, this, &MainWindow::onAutoStartupChanged);
+
+    QHBoxLayout *minTrayLayout = new QHBoxLayout;
+    QCheckBox *minTrayCb = new QCheckBox("关闭窗口后最小化到托盘");
+    minTrayCb->setChecked(m_isMinToTray);
+    minTrayLayout->addWidget(minTrayCb);
+    minTrayLayout->addStretch();
+    connect(minTrayCb, &QCheckBox::stateChanged, this, &MainWindow::onMinToTrayChanged);
+
+    QHBoxLayout *themeLayout = new QHBoxLayout;
+    QLabel *themeLab = new QLabel("主题颜色：");
+    QComboBox *themeCbx = new QComboBox;
+    themeCbx->addItem("跟随系统");
+    themeCbx->addItem("浅色主题");
+    themeCbx->addItem("深色主题");
+    themeCbx->setCurrentIndex(m_themeType);
+    themeLayout->addWidget(themeLab);
+    themeLayout->addWidget(themeCbx);
+    themeLayout->addStretch();
+    connect(themeCbx, &QComboBox::currentIndexChanged, this, &MainWindow::onThemeChanged);
+
+    QHBoxLayout *pathLayout = new QHBoxLayout;
+    QPushButton *pathBtn = new QPushButton("打开存档文件位置");
+    pathBtn->setStyleSheet("background-color:#2D8CF0;");
+    pathLayout->addWidget(pathBtn);
+    pathLayout->addStretch();
+    connect(pathBtn, &QPushButton::clicked, this, &MainWindow::openSavePath);
+
+    QHBoxLayout *rateLayout = new QHBoxLayout;
+    QPushButton *rateBtn = new QPushButton("微软商店好评支持一下吧 ❤️");
+    rateBtn->setStyleSheet("background-color:#27AE60;");
+    rateLayout->addWidget(rateBtn);
+    rateLayout->addStretch();
+    connect(rateBtn, &QPushButton::clicked, this, &MainWindow::goToMsStoreRate);
+
+    mainLayout->addLayout(autoStartLayout);
+    mainLayout->addLayout(minTrayLayout);
+    mainLayout->addLayout(themeLayout);
+    mainLayout->addLayout(pathLayout);
+    mainLayout->addLayout(rateLayout);
+    mainLayout->addStretch();
+
+    settingsDlg->exec();
+    saveSettings();
+}
+
+void MainWindow::onAutoStartupChanged(int state)
+{
+    setAutoStartup(state == Qt::Checked);
+}
+
+void MainWindow::onMinToTrayChanged(int state)
+{
+    m_isMinToTray = (state == Qt::Checked);
+}
+
+void MainWindow::onThemeChanged(int index)
+{
+    applyTheme(index);
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    if(m_isMinToTray)
+    {
+        this->hide();
+        event->ignore();
+    }
+    else
+    {
+        event->accept();
+    }
 }
 
 void MainWindow::initUI()
 {
-    this->setWindowTitle("学习计划打卡");
     this->resize(800, 700);
 
     QWidget* centralWidget = new QWidget(this);
@@ -31,13 +406,17 @@ void MainWindow::initUI()
     QHBoxLayout* topTabLayout = new QHBoxLayout;
     m_dayViewBtn = new QPushButton("日视图");
     m_monthViewBtn = new QPushButton("月视图");
+    m_settingsBtn = new QPushButton("设置");
     QString topBtnStyle =
         "QPushButton{font-size:18px; font-weight:bold; padding:12px 40px; margin-right:15px; border-radius:12px; border:none; background-color:#FFFFFF; color:#2D8CF0;}"
         "QPushButton:checked{background-color:#2D8CF0; color:#FFFFFF;}"
-        "QPushButton:hover:!checked{background-color:#ECF5FF; color:#1D7AD9;}"
+        "QPushButton:hover{background-color:#ECF5FF; color:#1D7AD9;}"
         "QPushButton:pressed{background-color:#1D7AD9; color:#FFFFFF;}";
+    QString settingBtnStyle = "QPushButton{font-size:14px; padding:8px 16px; border-radius:8px; border:none; background-color:#2D8CF0; color:#FFFFFF; margin-left:10px;}"
+                              "QPushButton:hover{background-color:#1D7AD9;}";
     m_dayViewBtn->setStyleSheet(topBtnStyle);
     m_monthViewBtn->setStyleSheet(topBtnStyle);
+    m_settingsBtn->setStyleSheet(settingBtnStyle);
     m_dayViewBtn->setCheckable(true);
     m_monthViewBtn->setCheckable(true);
     m_dayViewBtn->setChecked(true);
@@ -45,7 +424,10 @@ void MainWindow::initUI()
     topTabLayout->addWidget(m_dayViewBtn);
     topTabLayout->addWidget(m_monthViewBtn);
     topTabLayout->addStretch();
+    topTabLayout->addWidget(m_settingsBtn);
+
     mainLayout->addLayout(topTabLayout);
+    connect(m_settingsBtn, &QPushButton::clicked, this, &MainWindow::showSettingsWindow);
 
     m_mainStackedWidget = new QStackedWidget;
     m_mainStackedWidget->addWidget(createDayViewPage());
@@ -63,19 +445,14 @@ QWidget* MainWindow::createDayViewPage()
     pageLayout->setContentsMargins(0, 0, 0, 0);
     pageLayout->setSpacing(20);
 
-    QHBoxLayout* dateLayout = new QHBoxLayout;
+    QHBoxLayout* funcBtnLayout = new QHBoxLayout;
     QPushButton* dateSelectBtn = new QPushButton("日期选择");
     QPushButton* todayBtn = new QPushButton("今日");
     QPushButton* setTargetBtn = new QPushButton("设置目标");
     QPushButton* clearBtn = new QPushButton("清除当日数据");
-
-    m_selectedDateLabel = new QLabel();
-    m_selectedDateLabel->setStyleSheet("font-size:15px; font-weight:bold; color:#2D8CF0; padding:0 15px;");
-    m_selectedDateLabel->setText(QString("当前日期：%1").arg(m_currentDate.toString("yyyy年MM月dd日")));
-
     m_targetHourShowLabel = new QLabel();
     m_targetHourShowLabel->setStyleSheet("font-size:15px; font-weight:bold; color:#27AE60; padding:0 10px;");
-    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(appDatas->getStudyTargetHour()));
+    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(m_studyTargetHour));
 
     QString funcBtnStyle =
         "QPushButton{font-size:14px; font-weight:bold; padding:8px 20px; border-radius:8px; border:none; background-color:#FFFFFF; color:#333333;}"
@@ -90,29 +467,38 @@ QWidget* MainWindow::createDayViewPage()
                                 "QPushButton:hover{background-color:#219653;}"
                                 "QPushButton:pressed{background-color:#1E8845;}");
 
-    dateLayout->addWidget(dateSelectBtn);
-    dateLayout->addWidget(todayBtn);
-    dateLayout->addWidget(m_selectedDateLabel);
-    dateLayout->addStretch();
-    dateLayout->addWidget(m_targetHourShowLabel);
-    dateLayout->addWidget(setTargetBtn);
-    dateLayout->addWidget(clearBtn);
-    pageLayout->addLayout(dateLayout);
+    funcBtnLayout->addWidget(dateSelectBtn);
+    funcBtnLayout->addWidget(todayBtn);
+    funcBtnLayout->addStretch();
+    funcBtnLayout->addWidget(m_targetHourShowLabel);
+    funcBtnLayout->addWidget(setTargetBtn);
+    funcBtnLayout->addWidget(clearBtn);
+    pageLayout->addLayout(funcBtnLayout);
 
-    QGroupBox* progressGroup = new QGroupBox("📚 学习进度");
-    progressGroup->setStyleSheet("QGroupBox{font-size:16px; font-weight:bold; color:#2D8CF0; border:2px solid #ECF5FF; border-radius:10px; padding:15px;}");
+    QGroupBox* progressGroup = new QGroupBox;
+    progressGroup->setStyleSheet("QGroupBox{font-size:16px; font-weight:bold; color:#2D8CF0; border:2px solid #ECF5FF; border-radius:10px; padding:15px; margin:0;}");
     QVBoxLayout* progressLayout = new QVBoxLayout(progressGroup);
-    m_todayStudyHourLabel = new QLabel(QString("今日学习时间：0小时 / 目标%1小时").arg(appDatas->getStudyTargetHour()));
+
+    QHBoxLayout* progressHeaderLayout = new QHBoxLayout;
+    QLabel* progressTitle = new QLabel("📚 学习进度");
+    progressTitle->setStyleSheet("font-size:16px; font-weight:bold; color:#2D8CF0;");
+    m_selectedDateLabel = new QLabel();
+    m_selectedDateLabel->setStyleSheet("font-size:15px; font-weight:bold; color:#2D8CF0; padding:0 5px;");
+    m_selectedDateLabel->setText(QString("当前日期：%1").arg(m_currentDate.toString("yyyy年MM月dd日")));
+    progressHeaderLayout->addWidget(progressTitle);
+    progressHeaderLayout->addStretch();
+    progressHeaderLayout->addWidget(m_selectedDateLabel);
+
+    m_todayStudyHourLabel = new QLabel(QString("今日学习时间：0小时 / 目标%1小时").arg(m_studyTargetHour));
     m_todayStudyHourLabel->setStyleSheet("font-size:15px; font-weight:bold; color:#333333; padding:8px 0;");
 
     m_dayProgressBar = new QProgressBar;
     m_dayProgressBar->setAlignment(Qt::AlignCenter);
-    // ============ 进度条文字颜色改为黑色 ============
-    m_dayProgressBar->setStyleSheet(
-        "QProgressBar{border:none; border-radius:8px; height:26px; background-color:#ECF5FF; font-size:14px; font-weight:bold; color:black;}"
-        "QProgressBar::chunk{background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9); border-radius:8px;}");
-    m_dayProgressBar->setRange(0, appDatas->getStudyTargetHour());
+    // 进度条样式由applyTheme统一控制，删除此处默认样式
+    m_dayProgressBar->setRange(0, m_studyTargetHour);
     m_dayProgressBar->setValue(0);
+
+    progressLayout->addLayout(progressHeaderLayout);
     progressLayout->addWidget(m_todayStudyHourLabel);
     progressLayout->addWidget(m_dayProgressBar);
     pageLayout->addWidget(progressGroup);
@@ -124,7 +510,7 @@ QWidget* MainWindow::createDayViewPage()
     m_continuousDaysLabel = new QLabel("当前连续天数：0");
     m_maxContinuousDaysLabel = new QLabel("最长连续天数：0");
     m_completedProjectsLabel = new QLabel("已完成项目：0/0");
-    m_studyCheckLabel = new QLabel(QString("学习打卡：0/%1").arg(appDatas->getStudyTargetHour()));
+    m_studyCheckLabel = new QLabel(QString("学习打卡：0/%1").arg(m_studyTargetHour));
     QString statLabelStyle = "font-size:15px; font-weight:bold; color:#555555; padding:5px;";
     m_continuousDaysLabel->setStyleSheet(statLabelStyle);
     m_maxContinuousDaysLabel->setStyleSheet(statLabelStyle);
@@ -209,15 +595,16 @@ QWidget* MainWindow::createTimeAxis()
     QWidget* widget = new QWidget;
     QVBoxLayout* layout = new QVBoxLayout(widget);
     layout->setSpacing(10);
-    layout->setContentsMargins(10,10,10,10);
+    layout->setContentsMargins(5, 10, 5, 10);
 
     QList<int> hours = {8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
     for (int hour : hours) {
         QHBoxLayout* hourLayout = new QHBoxLayout;
-        hourLayout->setSpacing(12);
+        hourLayout->setSpacing(8);
 
         QLabel* timeLabel = new QLabel(QString("%1:00").arg(hour));
-        timeLabel->setFixedWidth(70);
+        timeLabel->setMinimumWidth(60);
+        timeLabel->setFixedWidth(65);
         timeLabel->setStyleSheet("font-size:14px; font-weight:bold; color:#2D8CF0; text-align:center;");
         timeLabel->setAlignment(Qt::AlignCenter);
 
@@ -225,7 +612,7 @@ QWidget* MainWindow::createTimeAxis()
         axisBtn->setObjectName(QString::number(hour));
         axisBtn->setEnabled(true);
         axisBtn->setStyleSheet(
-            "QPushButton{font-size:14px; padding:10px 0; border-radius:15px; border:none; background-color:#FFFFFF; color:#909399;}"
+            "QPushButton{font-size:14px; padding:10px 5px; border-radius:15px; border:none; background-color:#FFFFFF; color:#909399;}"
             "QPushButton:hover{background-color:#F8F9FA; color:#606266;}"
             "QPushButton:pressed{background-color:#F0F0F0;}"
             "QPushButton[text!=\"未安排\"]{background-color:#ECF5FF; color:#2D8CF0; font-weight:bold;}");
@@ -236,6 +623,7 @@ QWidget* MainWindow::createTimeAxis()
 
         hourLayout->addWidget(timeLabel);
         hourLayout->addWidget(axisBtn);
+        hourLayout->setStretchFactor(axisBtn, 1);
 
         layout->addLayout(hourLayout);
 
@@ -266,8 +654,8 @@ void MainWindow::onTimeAxisBtnClicked(int hour)
     dialog->setWindowTitle("选择事项");
     dialog->setModal(true);
     dialog->resize(300, 320);
-    dialog->setStyleSheet("QDialog{background-color:#F5F7FA; border-radius:12px; border:none;}"
-                          "QLabel{font-size:15px; font-weight:bold; color:#2D8CF0; padding:10px 0; text-align:center;}");
+    dialog->setStyleSheet("QDialog{background-color:#F5F7FA;border-radius:12px;border:none;}"
+                          "QLabel{font-size:15px;font-weight:bold;color:#2D8CF0;padding:10px 0;text-align:center;}");
 
     QVBoxLayout* layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(20,20,20,20);
@@ -280,9 +668,9 @@ void MainWindow::onTimeAxisBtnClicked(int hour)
     for (const QString& type : types) {
         QPushButton* typeBtn = new QPushButton(type);
         typeBtn->setStyleSheet(
-            "QPushButton{font-size:14px; padding:10px 0; border-radius:8px; border:none; background-color:#FFFFFF; color:#333333;}"
-            "QPushButton:hover{background-color:#ECF5FF; color:#2D8CF0;}"
-            "QPushButton:pressed{background-color:#2D8CF0; color:#FFFFFF;}");
+            "QPushButton{font-size:14px;padding:10px 0;border-radius:8px;border:none;background-color:#FFFFFF;color:#333333;}"
+            "QPushButton:hover{background-color:#ECF5FF;color:#2D8CF0;}"
+            "QPushButton:pressed{background-color:#2D8CF0;color:#FFFFFF;}");
         layout->addWidget(typeBtn);
 
         connect(typeBtn, &QPushButton::clicked, [=](){
@@ -296,11 +684,11 @@ void MainWindow::onTimeAxisBtnClicked(int hour)
     QPushButton* clearBtn = new QPushButton("清除");
     QPushButton* cancelBtn = new QPushButton("取消");
     clearBtn->setStyleSheet(
-        "QPushButton{font-size:14px; font-weight:bold; padding:8px 0; border-radius:8px; border:none; background-color:#FF6B6B; color:#FFFFFF; width:100px;}"
+        "QPushButton{font-size:14px;font-weight:bold;padding:8px 0;border-radius:8px;border:none;background-color:#FF6B6B;color:#FFFFFF;width:100px;}"
         "QPushButton:hover{background-color:#FF5252;}"
         "QPushButton:pressed{background-color:#FF3B3B;}");
     cancelBtn->setStyleSheet(
-        "QPushButton{font-size:14px; font-weight:bold; padding:8px 0; border-radius:8px; border:none; background-color:#C0C4CC; color:#FFFFFF; width:100px;}"
+        "QPushButton{font-size:14px;font-weight:bold;padding:8px 0;border-radius:8px;border:none;background-color:#C0C4CC;color:#FFFFFF;width:100px;}"
         "QPushButton:hover{background-color:#909399;}"
         "QPushButton:pressed{background-color:#606266;}");
 
@@ -325,8 +713,8 @@ void MainWindow::showSetTargetDialog()
     dialog->setWindowTitle("设置每日学习目标");
     dialog->setModal(true);
     dialog->resize(300, 360);
-    dialog->setStyleSheet("QDialog{background-color:#F5F7FA; border-radius:12px; border:none;}"
-                          "QLabel{font-size:15px; font-weight:bold; color:#27AE60; padding:10px 0; text-align:center;}");
+    dialog->setStyleSheet("QDialog{background-color:#F5F7FA;border-radius:12px;border:none;}"
+                          "QLabel{font-size:15px;font-weight:bold;color:#27AE60;padding:10px 0;text-align:center;}");
 
     QVBoxLayout* layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(20,20,20,20);
@@ -339,9 +727,9 @@ void MainWindow::showSetTargetDialog()
     for (int hour : targetHours) {
         QPushButton* hourBtn = new QPushButton(QString("%1 小时").arg(hour));
         hourBtn->setStyleSheet(
-            "QPushButton{font-size:14px; padding:10px 0; border-radius:8px; border:none; background-color:#FFFFFF; color:#333333;}"
-            "QPushButton:hover{background-color:#F0F9F0; color:#27AE60;}"
-            "QPushButton:pressed{background-color:#27AE60; color:#FFFFFF; font-weight:bold;}");
+            "QPushButton{font-size:14px;padding:10px 0;border-radius:8px;border:none;background-color:#FFFFFF;color:#333333;}"
+            "QPushButton:hover{background-color:#F0F9F0;color:#27AE60;}"
+            "QPushButton:pressed{background-color:#27AE60;color:#FFFFFF;font-weight:bold;}");
         layout->addWidget(hourBtn);
 
         connect(hourBtn, &QPushButton::clicked, [=](){
@@ -352,7 +740,7 @@ void MainWindow::showSetTargetDialog()
 
     QPushButton* cancelBtn = new QPushButton("取消");
     cancelBtn->setStyleSheet(
-        "QPushButton{font-size:14px; font-weight:bold; padding:8px 0; border-radius:8px; border:none; background-color:#C0C4CC; color:#FFFFFF; width:100px; margin-top:5px;}"
+        "QPushButton{font-size:14px;font-weight:bold;padding:8px 0;border-radius:8px;border:none;background-color:#C0C4CC;color:#FFFFFF;width:100px;margin-top:5px;}"
         "QPushButton:hover{background-color:#909399;}"
         "QPushButton:pressed{background-color:#606266;}");
     QHBoxLayout* btnLayout = new QHBoxLayout;
@@ -368,17 +756,17 @@ void MainWindow::showSetTargetDialog()
 
 void MainWindow::setStudyTargetHour(int targetHour)
 {
-    appDatas->setStudyTargetHour(targetHour);
-    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(appDatas->getStudyTargetHour()));
-    m_dayProgressBar->setRange(0, appDatas->getStudyTargetHour());
-    appDatas->saveConfigToFile();
+    m_studyTargetHour = targetHour;
+    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(m_studyTargetHour));
+    m_dayProgressBar->setRange(0, m_studyTargetHour);
+    saveConfigToFile();
     updateDayViewStats();
-    QMessageBox::information(this, "设置成功", QString("每日学习目标已设置为 %1 小时！").arg(appDatas->getStudyTargetHour()));
+    QMessageBox::information(this, "设置成功", QString("每日学习目标已设置为 %1 小时！").arg(m_studyTargetHour));
 }
 
 void MainWindow::clearCurrentHourItem(int hour)
 {
-    DateStudyData& data = appDatas->getStudyDataMap()[m_currentDate];
+    DateStudyData& data = m_studyDataMap[m_currentDate];
     if (data.timeAxisData.contains(hour))
     {
         TimeAxisItem oldItem = data.timeAxisData[hour];
@@ -391,11 +779,11 @@ void MainWindow::clearCurrentHourItem(int hour)
     QPushButton* btn = m_timeAxisBtnMap[hour];
     btn->setText("未安排");
     btn->setStyleSheet(
-        "QPushButton{font-size:14px; padding:10px 0; border-radius:15px; border:none; background-color:#FFFFFF; color:#909399;}"
-        "QPushButton:hover{background-color:#F8F9FA; color:#606266;}"
+        "QPushButton{font-size:14px;padding:10px 0;border-radius:15px;border:none;background-color:#FFFFFF;color:#909399;}"
+        "QPushButton:hover{background-color:#F8F9FA;color:#606266;}"
         "QPushButton:pressed{background-color:#F0F0F0;}");
 
-    appDatas->saveDataToFile();
+    saveDataToFile();
     updateDayViewStats();
     generateMonthCalendar(m_currentYear, m_currentMonth);
 }
@@ -403,7 +791,7 @@ void MainWindow::clearCurrentHourItem(int hour)
 void MainWindow::confirmTimeAxisItem(int hour, QString type)
 {
     bool isCompleted = true;
-    DateStudyData& data = appDatas->getStudyDataMap()[m_currentDate];
+    DateStudyData& data = m_studyDataMap[m_currentDate];
 
     if (data.timeAxisData.contains(hour))
     {
@@ -418,7 +806,7 @@ void MainWindow::confirmTimeAxisItem(int hour, QString type)
         QPushButton* btn = m_timeAxisBtnMap[hour];
         btn->setText(type);
         btn->setStyleSheet(
-            "QPushButton{font-size:14px; padding:10px 0; border-radius:15px; border:none; background-color:#ECF5FF; color:#2D8CF0; font-weight:bold;}"
+            "QPushButton{font-size:14px;padding:10px 0;border-radius:15px;border:none;background-color:#ECF5FF;color:#2D8CF0;font-weight:bold;}"
             "QPushButton:hover{background-color:#E6F0FF;}"
             "QPushButton:pressed{background-color:#D9E8FF;}");
     }
@@ -427,7 +815,7 @@ void MainWindow::confirmTimeAxisItem(int hour, QString type)
     if (type == "学习" && isCompleted) data.studyHours += 1;
     if (isCompleted) data.completedProjects += 1;
 
-    appDatas->saveDataToFile();
+    saveDataToFile();
     updateDayViewStats();
     generateMonthCalendar(m_currentYear, m_currentMonth);
 }
@@ -438,9 +826,9 @@ void MainWindow::showDateSelectDialog()
     dialog->setWindowTitle("选择日期");
     dialog->setModal(true);
     dialog->resize(320, 240);
-    dialog->setStyleSheet("QDialog{background-color:#F5F7FA; border-radius:12px; border:none;}"
-                          "QCalendarWidget{background-color:#FFFFFF; border-radius:8px; border:1px solid #ECF5FF;}"
-                          "QPushButton{font-size:14px; font-weight:bold; padding:8px 20px; border-radius:8px; border:none; background-color:#2D8CF0; color:#FFFFFF; margin-top:15px;}"
+    dialog->setStyleSheet("QDialog{background-color:#F5F7FA;border-radius:12px;border:none;}"
+                          "QCalendarWidget{background-color:#FFFFFF;border-radius:8px;border:1px solid #ECF5FF;}"
+                          "QPushButton{font-size:14px;font-weight:bold;padding:8px 20px;border-radius:8px;border:none;background-color:#2D8CF0;color:#FFFFFF;margin-top:15px;}"
                           "QPushButton:hover{background-color:#1D7AD9;}");
     QVBoxLayout* layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(20,20,20,20);
@@ -480,18 +868,18 @@ void MainWindow::setToTodayDate()
 
 void MainWindow::clearCurrentData()
 {
-    appDatas->getStudyDataMap()[m_currentDate] = DateStudyData();
+    m_studyDataMap[m_currentDate] = DateStudyData();
     QList<int> hours = {8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
     for(int hour : hours)
     {
         QPushButton* btn = m_timeAxisBtnMap[hour];
         btn->setText("未安排");
         btn->setStyleSheet(
-            "QPushButton{font-size:14px; padding:10px 0; border-radius:15px; border:none; background-color:#FFFFFF; color:#909399;}"
-            "QPushButton:hover{background-color:#F8F9FA; color:#606266;}"
+            "QPushButton{font-size:14px;padding:10px 0;border-radius:15px;border:none;background-color:#FFFFFF;color:#909399;}"
+            "QPushButton:hover{background-color:#F8F9FA;color:#606266;}"
             "QPushButton:pressed{background-color:#F0F0F0;}");
     }
-    appDatas->saveDataToFile();
+    saveDataToFile();
     loadDateData(m_currentDate);
     updateDayViewStats();
     generateMonthCalendar(m_currentYear, m_currentMonth);
@@ -531,7 +919,7 @@ void MainWindow::generateMonthCalendar(int year, int month)
     QStringList weeks = {"日", "一", "二", "三", "四", "五", "六"};
     for (int i = 0; i < 7; ++i) {
         QLabel* weekLab = new QLabel(weeks[i]);
-        weekLab->setStyleSheet("font-size:14px; font-weight:bold; color:#2D8CF0; text-align:center;");
+        weekLab->setStyleSheet("font-size:14px;font-weight:bold;color:#2D8CF0;text-align:center;");
         weekLab->setAlignment(Qt::AlignCenter);
         m_monthCalendarLayout->addWidget(weekLab, 0, i, Qt::AlignCenter);
     }
@@ -546,17 +934,17 @@ void MainWindow::generateMonthCalendar(int year, int month)
 
     for (int day = 1; day <= daysInMonth; ++day) {
         QDate currentDate(year, month, day);
-        DateStudyData data = appDatas->getStudyDataMap().value(currentDate);
+        DateStudyData data = m_studyDataMap.value(currentDate);
 
         QLabel* dayLabel = new QLabel(QString("%1\n%2h").arg(day).arg(data.studyHours));
         dayLabel->setAlignment(Qt::AlignCenter);
         dayLabel->setFixedSize(65, 65);
         if (data.studyHours == 0) {
-            dayLabel->setStyleSheet("background-color:#FFFFFF; border:1px solid #F0F0F0; border-radius:10px; font-size:13px; color:#909399;");
-        } else if (data.studyHours >= appDatas->getStudyTargetHour()) {
-            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #27AE60,stop:1 #219653); color:white; border-radius:10px; font-size:13px; font-weight:bold;");
+            dayLabel->setStyleSheet("background-color:#FFFFFF;border:1px solid #F0F0F0;border-radius:10px;font-size:13px;color:#909399;");
+        } else if (data.studyHours >= m_studyTargetHour) {
+            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #27AE60,stop:1 #219653);color:white;border-radius:10px;font-size:13px;font-weight:bold;");
         } else {
-            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9); color:white; border-radius:10px; font-size:13px; font-weight:bold;");
+            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9);color:white;border-radius:10px;font-size:13px;font-weight:bold;");
         }
 
         m_monthCalendarLayout->addWidget(dayLabel, row, col, Qt::AlignCenter);
@@ -570,10 +958,10 @@ void MainWindow::generateMonthCalendar(int year, int month)
 
 void MainWindow::loadDateData(const QDate& date)
 {
-    if (!appDatas->getStudyDataMap().contains(date)) {
-        appDatas->getStudyDataMap()[date] = DateStudyData();
+    if (!m_studyDataMap.contains(date)) {
+        m_studyDataMap[date] = DateStudyData();
     }
-    DateStudyData data = appDatas->getStudyDataMap()[date];
+    DateStudyData data = m_studyDataMap[date];
 
     QList<int> hours = {8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
     for(int hour : hours)
@@ -584,7 +972,7 @@ void MainWindow::loadDateData(const QDate& date)
             TimeAxisItem item = data.timeAxisData[hour];
             btn->setText(item.type);
             btn->setStyleSheet(
-                "QPushButton{font-size:14px; padding:10px 0; border-radius:15px; border:none; background-color:#ECF5FF; color:#2D8CF0; font-weight:bold;}"
+                "QPushButton{font-size:14px;padding:10px 0;border-radius:15px;border:none;background-color:#ECF5FF;color:#2D8CF0;font-weight:bold;}"
                 "QPushButton:hover{background-color:#E6F0FF;}"
                 "QPushButton:pressed{background-color:#D9E8FF;}");
         }
@@ -592,8 +980,8 @@ void MainWindow::loadDateData(const QDate& date)
         {
             btn->setText("未安排");
             btn->setStyleSheet(
-                "QPushButton{font-size:14px; padding:10px 0; border-radius:15px; border:none; background-color:#FFFFFF; color:#909399;}"
-                "QPushButton:hover{background-color:#F8F9FA; color:#606266;}"
+                "QPushButton{font-size:14px;padding:10px 0;border-radius:15px;border:none;background-color:#FFFFFF;color:#909399;}"
+                "QPushButton:hover{background-color:#F8F9FA;color:#606266;}"
                 "QPushButton:pressed{background-color:#F0F0F0;}");
         }
     }
@@ -601,14 +989,14 @@ void MainWindow::loadDateData(const QDate& date)
 
 void MainWindow::updateDayViewStats()
 {
-    DateStudyData data = appDatas->getStudyDataMap()[m_currentDate];
+    DateStudyData data = m_studyDataMap[m_currentDate];
     int continuousDays = calculateContinuousDays();
-    appDatas->setMaxContinDays(qMax(appDatas->getMaxContinDays(), continuousDays));
+    m_maxContinuousDays = qMax(m_maxContinuousDays, continuousDays);
 
-    m_todayStudyHourLabel->setText(QString("今日学习时间：%1小时 / 目标%2小时").arg(data.studyHours).arg(appDatas->getStudyTargetHour()));
-    if(data.studyHours >= appDatas->getStudyTargetHour())
+    m_todayStudyHourLabel->setText(QString("今日学习时间：%1小时 / 目标%2小时").arg(data.studyHours).arg(m_studyTargetHour));
+    if(data.studyHours >= m_studyTargetHour)
     {
-        m_dayProgressBar->setValue(appDatas->getStudyTargetHour());
+        m_dayProgressBar->setValue(m_studyTargetHour);
     }
     else
     {
@@ -616,16 +1004,16 @@ void MainWindow::updateDayViewStats()
     }
 
     m_continuousDaysLabel->setText(QString("当前连续天数：%1").arg(continuousDays));
-    m_maxContinuousDaysLabel->setText(QString("最长连续天数：%1").arg(appDatas->getMaxContinDays()));
+    m_maxContinuousDaysLabel->setText(QString("最长连续天数：%1").arg(m_maxContinuousDays));
     m_completedProjectsLabel->setText(QString("已完成项目：%1/%2").arg(data.completedProjects).arg(data.totalProjects));
-    m_studyCheckLabel->setText(QString("学习打卡：%1/%2").arg(data.studyHours).arg(appDatas->getStudyTargetHour()));
+    m_studyCheckLabel->setText(QString("学习打卡：%1/%2").arg(data.studyHours).arg(m_studyTargetHour));
 }
 
 int MainWindow::calculateContinuousDays()
 {
     int days = 0;
     QDate current = QDate::currentDate();
-    while (appDatas->getStudyDataMap().contains(current) && appDatas->getStudyDataMap()[current].studyHours > 0) {
+    while (m_studyDataMap.contains(current) && m_studyDataMap[current].studyHours > 0) {
         days++;
         current = current.addDays(-1);
     }
