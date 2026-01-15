@@ -6,10 +6,6 @@ MainWindow::MainWindow(QWidget *parent)
     , m_currentYear(QDate::currentDate().year())
     , m_currentMonth(QDate::currentDate().month())
 {
-    initSavePath();
-    initConfigFile();
-    loadDataFromFile();
-    loadConfigFromFile();
     initUI();
     loadDateData(m_currentDate);
     updateDayViewStats();
@@ -19,161 +15,6 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    saveDataToFile();
-    saveConfigToFile();
-}
-
-void MainWindow::initSavePath()
-{
-    QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir dir(appDataPath);
-    if(!dir.exists())
-    {
-        dir.mkpath(appDataPath);
-    }
-    m_saveFilePath = appDataPath + "/study_data.json";
-
-    QString userName = QProcessEnvironment::systemEnvironment().value("USERNAME");
-    qDebug() << "当前登录用户名：" << userName;
-    qDebug() << "当前学习数据存档路径：" << m_saveFilePath;
-}
-
-void MainWindow::initConfigFile()
-{
-    QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir dir(appDataPath);
-    if(!dir.exists())
-    {
-        dir.mkpath(appDataPath);
-    }
-    m_configFilePath = appDataPath + "/study_config.json";
-    qDebug() << "当前配置文件存档路径：" << m_configFilePath;
-}
-
-void MainWindow::saveConfigToFile()
-{
-    QJsonObject rootObj;
-    rootObj.insert("studyTargetHour", m_studyTargetHour);
-
-    QFile file(m_configFilePath);
-    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
-    QJsonDocument doc(rootObj);
-    file.write(doc.toJson(QJsonDocument::Compact));
-    file.close();
-
-    QApplication::processEvents();
-}
-
-void MainWindow::loadConfigFromFile()
-{
-    QFile file(m_configFilePath);
-    if(!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
-
-    QByteArray data = file.readAll();
-    file.close();
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
-    if(error.error != QJsonParseError::NoError) return;
-
-    QJsonObject rootObj = doc.object();
-    if(rootObj.contains("studyTargetHour"))
-    {
-        m_studyTargetHour = rootObj["studyTargetHour"].toInt();
-        if(m_studyTargetHour <1 || m_studyTargetHour>8) m_studyTargetHour =4;
-    }
-}
-
-void MainWindow::saveDataToFile()
-{
-    QJsonObject rootObj;
-    rootObj.insert("maxContinuousDays", m_maxContinuousDays);
-    QJsonObject dateObj;
-
-    QMap<QDate, DateStudyData>::const_iterator dateIt = m_studyDataMap.constBegin();
-    while(dateIt != m_studyDataMap.constEnd())
-    {
-        QDate date = dateIt.key();
-        DateStudyData data = dateIt.value();
-        QString dateStr = date.toString("yyyy-MM-dd");
-
-        QJsonObject studyObj;
-        studyObj.insert("studyHours", data.studyHours);
-        studyObj.insert("completedProjects", data.completedProjects);
-        studyObj.insert("totalProjects", data.totalProjects);
-
-        QJsonObject timeAxisObj;
-        QMap<int, TimeAxisItem>::const_iterator timeIt = data.timeAxisData.constBegin();
-        while(timeIt != data.timeAxisData.constEnd())
-        {
-            int hour = timeIt.key();
-            TimeAxisItem item = timeIt.value();
-            QJsonObject itemObj;
-            itemObj.insert("type", item.type);
-            itemObj.insert("isCompleted", item.isCompleted);
-            timeAxisObj.insert(QString::number(hour), itemObj);
-            ++timeIt;
-        }
-        studyObj.insert("timeAxisData", timeAxisObj);
-        dateObj.insert(dateStr, studyObj);
-        ++dateIt;
-    }
-    rootObj.insert("studyData", dateObj);
-
-    QFile file(m_saveFilePath);
-    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
-    QJsonDocument doc(rootObj);
-    file.write(doc.toJson(QJsonDocument::Compact));
-    file.close();
-
-    QApplication::processEvents();
-}
-
-void MainWindow::loadDataFromFile()
-{
-    QFile file(m_saveFilePath);
-    if(!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
-
-    QByteArray data = file.readAll();
-    file.close();
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
-    if(error.error != QJsonParseError::NoError) return;
-
-    QJsonObject rootObj = doc.object();
-    if(rootObj.contains("maxContinuousDays")) m_maxContinuousDays = rootObj["maxContinuousDays"].toInt();
-
-    if(rootObj.contains("studyData"))
-    {
-        QJsonObject dateObj = rootObj["studyData"].toObject();
-        QStringList dateList = dateObj.keys();
-        foreach (QString dateStr, dateList)
-        {
-            QDate date = QDate::fromString(dateStr, "yyyy-MM-dd");
-            if(!date.isValid()) continue;
-
-            QJsonObject studyObj = dateObj[dateStr].toObject();
-            DateStudyData studyData;
-            studyData.studyHours = studyObj["studyHours"].toInt();
-            studyData.completedProjects = studyObj["completedProjects"].toInt();
-            studyData.totalProjects = studyObj["totalProjects"].toInt();
-
-            QJsonObject timeAxisObj = studyObj["timeAxisData"].toObject();
-            QStringList hourList = timeAxisObj.keys();
-            foreach (QString hourStr, hourList)
-            {
-                bool ok;
-                int hour = hourStr.toInt(&ok);
-                if(!ok) continue;
-
-                QJsonObject itemObj = timeAxisObj[hourStr].toObject();
-                TimeAxisItem item;
-                item.type = itemObj["type"].toString();
-                item.isCompleted = itemObj["isCompleted"].toBool();
-                studyData.timeAxisData.insert(hour, item);
-            }
-            m_studyDataMap.insert(date, studyData);
-        }
-    }
 }
 
 void MainWindow::initUI()
@@ -234,7 +75,7 @@ QWidget* MainWindow::createDayViewPage()
 
     m_targetHourShowLabel = new QLabel();
     m_targetHourShowLabel->setStyleSheet("font-size:15px; font-weight:bold; color:#27AE60; padding:0 10px;");
-    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(m_studyTargetHour));
+    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(appDatas->getStudyTargetHour()));
 
     QString funcBtnStyle =
         "QPushButton{font-size:14px; font-weight:bold; padding:8px 20px; border-radius:8px; border:none; background-color:#FFFFFF; color:#333333;}"
@@ -261,7 +102,7 @@ QWidget* MainWindow::createDayViewPage()
     QGroupBox* progressGroup = new QGroupBox("📚 学习进度");
     progressGroup->setStyleSheet("QGroupBox{font-size:16px; font-weight:bold; color:#2D8CF0; border:2px solid #ECF5FF; border-radius:10px; padding:15px;}");
     QVBoxLayout* progressLayout = new QVBoxLayout(progressGroup);
-    m_todayStudyHourLabel = new QLabel(QString("今日学习时间：0小时 / 目标%1小时").arg(m_studyTargetHour));
+    m_todayStudyHourLabel = new QLabel(QString("今日学习时间：0小时 / 目标%1小时").arg(appDatas->getStudyTargetHour()));
     m_todayStudyHourLabel->setStyleSheet("font-size:15px; font-weight:bold; color:#333333; padding:8px 0;");
 
     m_dayProgressBar = new QProgressBar;
@@ -270,7 +111,7 @@ QWidget* MainWindow::createDayViewPage()
     m_dayProgressBar->setStyleSheet(
         "QProgressBar{border:none; border-radius:8px; height:26px; background-color:#ECF5FF; font-size:14px; font-weight:bold; color:black;}"
         "QProgressBar::chunk{background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9); border-radius:8px;}");
-    m_dayProgressBar->setRange(0, m_studyTargetHour);
+    m_dayProgressBar->setRange(0, appDatas->getStudyTargetHour());
     m_dayProgressBar->setValue(0);
     progressLayout->addWidget(m_todayStudyHourLabel);
     progressLayout->addWidget(m_dayProgressBar);
@@ -283,7 +124,7 @@ QWidget* MainWindow::createDayViewPage()
     m_continuousDaysLabel = new QLabel("当前连续天数：0");
     m_maxContinuousDaysLabel = new QLabel("最长连续天数：0");
     m_completedProjectsLabel = new QLabel("已完成项目：0/0");
-    m_studyCheckLabel = new QLabel(QString("学习打卡：0/%1").arg(m_studyTargetHour));
+    m_studyCheckLabel = new QLabel(QString("学习打卡：0/%1").arg(appDatas->getStudyTargetHour()));
     QString statLabelStyle = "font-size:15px; font-weight:bold; color:#555555; padding:5px;";
     m_continuousDaysLabel->setStyleSheet(statLabelStyle);
     m_maxContinuousDaysLabel->setStyleSheet(statLabelStyle);
@@ -527,17 +368,17 @@ void MainWindow::showSetTargetDialog()
 
 void MainWindow::setStudyTargetHour(int targetHour)
 {
-    m_studyTargetHour = targetHour;
-    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(m_studyTargetHour));
-    m_dayProgressBar->setRange(0, m_studyTargetHour);
-    saveConfigToFile();
+    appDatas->setStudyTargetHour(targetHour);
+    m_targetHourShowLabel->setText(QString("每日学习目标：%1 小时").arg(appDatas->getStudyTargetHour()));
+    m_dayProgressBar->setRange(0, appDatas->getStudyTargetHour());
+    appDatas->saveConfigToFile();
     updateDayViewStats();
-    QMessageBox::information(this, "设置成功", QString("每日学习目标已设置为 %1 小时！").arg(m_studyTargetHour));
+    QMessageBox::information(this, "设置成功", QString("每日学习目标已设置为 %1 小时！").arg(appDatas->getStudyTargetHour()));
 }
 
 void MainWindow::clearCurrentHourItem(int hour)
 {
-    DateStudyData& data = m_studyDataMap[m_currentDate];
+    DateStudyData& data = appDatas->getStudyDataMap()[m_currentDate];
     if (data.timeAxisData.contains(hour))
     {
         TimeAxisItem oldItem = data.timeAxisData[hour];
@@ -554,7 +395,7 @@ void MainWindow::clearCurrentHourItem(int hour)
         "QPushButton:hover{background-color:#F8F9FA; color:#606266;}"
         "QPushButton:pressed{background-color:#F0F0F0;}");
 
-    saveDataToFile();
+    appDatas->saveDataToFile();
     updateDayViewStats();
     generateMonthCalendar(m_currentYear, m_currentMonth);
 }
@@ -562,7 +403,7 @@ void MainWindow::clearCurrentHourItem(int hour)
 void MainWindow::confirmTimeAxisItem(int hour, QString type)
 {
     bool isCompleted = true;
-    DateStudyData& data = m_studyDataMap[m_currentDate];
+    DateStudyData& data = appDatas->getStudyDataMap()[m_currentDate];
 
     if (data.timeAxisData.contains(hour))
     {
@@ -586,7 +427,7 @@ void MainWindow::confirmTimeAxisItem(int hour, QString type)
     if (type == "学习" && isCompleted) data.studyHours += 1;
     if (isCompleted) data.completedProjects += 1;
 
-    saveDataToFile();
+    appDatas->saveDataToFile();
     updateDayViewStats();
     generateMonthCalendar(m_currentYear, m_currentMonth);
 }
@@ -639,7 +480,7 @@ void MainWindow::setToTodayDate()
 
 void MainWindow::clearCurrentData()
 {
-    m_studyDataMap[m_currentDate] = DateStudyData();
+    appDatas->getStudyDataMap()[m_currentDate] = DateStudyData();
     QList<int> hours = {8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
     for(int hour : hours)
     {
@@ -650,7 +491,7 @@ void MainWindow::clearCurrentData()
             "QPushButton:hover{background-color:#F8F9FA; color:#606266;}"
             "QPushButton:pressed{background-color:#F0F0F0;}");
     }
-    saveDataToFile();
+    appDatas->saveDataToFile();
     loadDateData(m_currentDate);
     updateDayViewStats();
     generateMonthCalendar(m_currentYear, m_currentMonth);
@@ -705,14 +546,14 @@ void MainWindow::generateMonthCalendar(int year, int month)
 
     for (int day = 1; day <= daysInMonth; ++day) {
         QDate currentDate(year, month, day);
-        DateStudyData data = m_studyDataMap.value(currentDate);
+        DateStudyData data = appDatas->getStudyDataMap().value(currentDate);
 
         QLabel* dayLabel = new QLabel(QString("%1\n%2h").arg(day).arg(data.studyHours));
         dayLabel->setAlignment(Qt::AlignCenter);
         dayLabel->setFixedSize(65, 65);
         if (data.studyHours == 0) {
             dayLabel->setStyleSheet("background-color:#FFFFFF; border:1px solid #F0F0F0; border-radius:10px; font-size:13px; color:#909399;");
-        } else if (data.studyHours >= m_studyTargetHour) {
+        } else if (data.studyHours >= appDatas->getStudyTargetHour()) {
             dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #27AE60,stop:1 #219653); color:white; border-radius:10px; font-size:13px; font-weight:bold;");
         } else {
             dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9); color:white; border-radius:10px; font-size:13px; font-weight:bold;");
@@ -729,10 +570,10 @@ void MainWindow::generateMonthCalendar(int year, int month)
 
 void MainWindow::loadDateData(const QDate& date)
 {
-    if (!m_studyDataMap.contains(date)) {
-        m_studyDataMap[date] = DateStudyData();
+    if (!appDatas->getStudyDataMap().contains(date)) {
+        appDatas->getStudyDataMap()[date] = DateStudyData();
     }
-    DateStudyData data = m_studyDataMap[date];
+    DateStudyData data = appDatas->getStudyDataMap()[date];
 
     QList<int> hours = {8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
     for(int hour : hours)
@@ -760,14 +601,14 @@ void MainWindow::loadDateData(const QDate& date)
 
 void MainWindow::updateDayViewStats()
 {
-    DateStudyData data = m_studyDataMap[m_currentDate];
+    DateStudyData data = appDatas->getStudyDataMap()[m_currentDate];
     int continuousDays = calculateContinuousDays();
-    m_maxContinuousDays = qMax(m_maxContinuousDays, continuousDays);
+    appDatas->setMaxContinDays(qMax(appDatas->getMaxContinDays(), continuousDays));
 
-    m_todayStudyHourLabel->setText(QString("今日学习时间：%1小时 / 目标%2小时").arg(data.studyHours).arg(m_studyTargetHour));
-    if(data.studyHours >= m_studyTargetHour)
+    m_todayStudyHourLabel->setText(QString("今日学习时间：%1小时 / 目标%2小时").arg(data.studyHours).arg(appDatas->getStudyTargetHour()));
+    if(data.studyHours >= appDatas->getStudyTargetHour())
     {
-        m_dayProgressBar->setValue(m_studyTargetHour);
+        m_dayProgressBar->setValue(appDatas->getStudyTargetHour());
     }
     else
     {
@@ -775,16 +616,16 @@ void MainWindow::updateDayViewStats()
     }
 
     m_continuousDaysLabel->setText(QString("当前连续天数：%1").arg(continuousDays));
-    m_maxContinuousDaysLabel->setText(QString("最长连续天数：%1").arg(m_maxContinuousDays));
+    m_maxContinuousDaysLabel->setText(QString("最长连续天数：%1").arg(appDatas->getMaxContinDays()));
     m_completedProjectsLabel->setText(QString("已完成项目：%1/%2").arg(data.completedProjects).arg(data.totalProjects));
-    m_studyCheckLabel->setText(QString("学习打卡：%1/%2").arg(data.studyHours).arg(m_studyTargetHour));
+    m_studyCheckLabel->setText(QString("学习打卡：%1/%2").arg(data.studyHours).arg(appDatas->getStudyTargetHour()));
 }
 
 int MainWindow::calculateContinuousDays()
 {
     int days = 0;
     QDate current = QDate::currentDate();
-    while (m_studyDataMap.contains(current) && m_studyDataMap[current].studyHours > 0) {
+    while (appDatas->getStudyDataMap().contains(current) && appDatas->getStudyDataMap()[current].studyHours > 0) {
         days++;
         current = current.addDays(-1);
     }
