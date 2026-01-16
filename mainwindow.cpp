@@ -238,7 +238,7 @@ void MainWindow::setAutoStartup(bool isAuto)
 void MainWindow::initSystemTray()
 {
     m_systemTrayIcon = new QSystemTrayIcon(this);
-    m_systemTrayIcon->setIcon(QApplication::style()->standardIcon(QStyle::SP_ComputerIcon));
+    m_systemTrayIcon->setIcon(QIcon(":/16.ico"));
     m_systemTrayIcon->setToolTip("学习计划打卡");
 
     m_trayMenu = new QMenu(this);
