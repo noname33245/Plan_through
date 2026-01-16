@@ -649,7 +649,7 @@ void MainWindow::onTimeAxisBtnClicked(int hour)
     QDialog* dialog = new QDialog(this);
     dialog->setWindowTitle("选择事项");
     dialog->setModal(true);
-    dialog->resize(240, 260);  // 弹窗尺寸紧凑
+    dialog->resize(240, 260);
     dialog->setStyleSheet("QDialog{background-color:#F5F7FA;border-radius:10px;border:none;}"
                           "QLabel{font-size:13px;font-weight:bold;color:#2D8CF0;padding:6px 0;text-align:center;}");
 
@@ -693,6 +693,12 @@ void MainWindow::onTimeAxisBtnClicked(int hour)
     btnGroupLayout->addWidget(cancelBtn);
     btnGroupLayout->addStretch();
     layout->addLayout(btnGroupLayout);
+
+    connect(clearBtn, &QPushButton::clicked, this, [=](){
+        clearCurrentHourItem(hour);
+        dialog->close();
+    });
+    connect(cancelBtn, &QPushButton::clicked, dialog, &QDialog::close);
 
     dialog->exec();
 }
