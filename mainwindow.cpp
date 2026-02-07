@@ -21,11 +21,12 @@ MainWindow::MainWindow(QWidget *parent)
     initUI();
     applyTheme(appDatas.themeType());
     initSystemTray();
-
     // 初始化日视图和月视图数据
     findChild<DayView*>("dayView")->loadDateData(DateHelper::currentDate());
     findChild<DayView*>("dayView")->updateDayViewStats();
     findChild<MonthView*>("monthView")->generateMonthCalendar();
+
+
 
     // 根据用户设置显示默认视图
     if (appDatas.defaultViewType() == 0) {
@@ -74,27 +75,7 @@ MainWindow::~MainWindow()
 void MainWindow::applyTheme(int themeType)
 {
     appDatas.setTheme(themeType);
-    QString mainStyle, progressStyle;
-
-    // 根据主题类型设置不同的样式
-    if (themeType == 0) {
-        mainStyle = "QMainWindow{background-color: #F5F7FA;border: none;}"
-                    "*{color:#333333;}"
-                    "QLabel{color:#333333;}"
-                    "QGroupBox{color:#333333; font-weight:bold;}";
-        progressStyle = "QProgressBar{border:none; border-radius:6px; height:22px; background-color:#ECF5FF; font-size:12px; font-weight:bold; color:#333333;}"
-                        "QProgressBar::chunk{background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7CE0); border-radius:6px;}";
-    } else if (themeType == 1) {
-        mainStyle = "QMainWindow{background-color: #FFFFFF;border: none;}"
-                    "*{color:#333333;}"
-                    "QLabel{color:#333333;}"
-                    "QGroupBox{color:#333333; font-weight:bold;}";
-        progressStyle = "QProgressBar{border:none; border-radius:6px; height:22px; background-color:#F0F0F0; font-size:12px; font-weight:bold; color:#333333;}"
-                        "QProgressBar::chunk{background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7CE0); border-radius:6px;}";
-    }
-
-    this->setStyleSheet(mainStyle);
-    findChild<DayView*>("dayView")->setProgressStyle(progressStyle);
+    this->setStyleSheet(loadQss(themeType));
     findChild<DayView*>("dayView")->updateDayViewStats();
 }
 
@@ -793,4 +774,20 @@ void MainWindow::initUI()
     );
     m_resizeHandle->move(this->width() - handleSize, this->height() - handleSize);
     m_resizeHandle->setMouseTracking(true);
+}
+
+QString MainWindow::loadQss(int type)
+{
+    const QString path = QString(":/style%1.qss").arg(type);
+    QFile file(path);
+    //打开文件
+    file.open(QFile::ReadOnly);
+    if(!file.isOpen())
+    {
+        qDebug()<<"Error in open "+path;
+        return "";
+    }
+    QString style = QString::fromUtf8(file.readAll());
+    file.close();
+    return style;
 }

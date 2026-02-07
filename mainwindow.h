@@ -62,6 +62,8 @@ public:
     // 应用主题
     // 参数1：主题类型
     void applyTheme(int themeType);
+
+    QString loadQss(int type);
     
     // 从系统托盘显示窗口
     void showWindowFromTray();

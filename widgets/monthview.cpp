@@ -20,22 +20,14 @@ MonthView::MonthView(QWidget *parent)
     QPushButton* currentMonthBtn = new QPushButton("当月");
     QPushButton* statisticsBtn = new QPushButton("学习统计");
     m_monthTitleLabel = new QLabel(QString("%1年%2月").arg(DateHelper::currentYear()).arg(DateHelper::currentMonth()));
+    m_monthTitleLabel->setObjectName("monthTitleLabel");
     m_monthTitleLabel->setAlignment(Qt::AlignCenter);
-    m_monthTitleLabel->setStyleSheet("font-size:15px; font-weight:bold; color:#2D8CF0; padding:0 10px;");
     
     // 按钮样式
-    QString monthBtnStyle = 
-        "QPushButton{font-size:12px; font-weight:bold; padding:5px 10px; border-radius:6px; border:none; background-color:#FFFFFF; color:#333333;}"
-        "QPushButton:hover{background-color:#F0F0F0;}"
-        "QPushButton:pressed{background-color:#E0E0E0;}";
-    prevMonthBtn->setStyleSheet(monthBtnStyle);
-    nextMonthBtn->setStyleSheet(monthBtnStyle);
-    currentMonthBtn->setStyleSheet("QPushButton{font-size:12px; font-weight:bold; padding:5px 10px; border-radius:6px; border:none; background-color:#2D8CF0; color:#FFFFFF;}"
-                                   "QPushButton:hover{background-color:#1D7AD9;}"
-                                   "QPushButton:pressed{background-color:#1D7AD9;}");
-    statisticsBtn->setStyleSheet("QPushButton{font-size:12px; font-weight:bold; padding:5px 10px; border-radius:6px; border:none; background-color:#52C41A; color:#FFFFFF;}"
-                                   "QPushButton:hover{background-color:#4CAF50;}"
-                                   "QPushButton:pressed{background-color:#45a049;}");
+    prevMonthBtn->setObjectName("monthBtn");
+    nextMonthBtn->setObjectName("monthBtn");
+    currentMonthBtn->setObjectName("currentMonthBtn");
+    statisticsBtn->setObjectName("statisticsBtn");
     
     monthLayout->addWidget(prevMonthBtn);
     monthLayout->addWidget(m_monthTitleLabel);
@@ -57,24 +49,11 @@ MonthView::MonthView(QWidget *parent)
         statsDlg->setWindowOpacity(1.0);
 
         // 设置统计对话框样式
-        statsDlg->setStyleSheet(
-            "QDialog{background-color:#FFFFFF; border-radius:10px; border:1px solid #EEEEEE;}"
-            "QLabel{font-size:12px; color:#333333;}"
-            ".statLabel{font-size:14px; font-weight:bold; color:#2D8CF0;}"
-            ".statValue{font-size:16px; font-weight:bold; color:#34B7F1;}"
-            "QGroupBox{font-size:14px; font-weight:bold; color:#333333; border:1px solid #DDDDDD; border-radius:6px; margin-top:10px; padding-top:15px;}"
-            "QGroupBox::title{subcontrol-origin:margin; left:10px; padding:0 5px 0 5px;}"
-        );
+        statsDlg->setObjectName("statsDlg");
 
         // 创建滚动区域
         QScrollArea *scrollArea = new QScrollArea(statsDlg);
         scrollArea->setWidgetResizable(true);
-        scrollArea->setStyleSheet(
-            "QScrollArea{border:none;}"
-            "QScrollBar:vertical{width:8px; background-color:#F5F7FA; border-radius:4px;}"
-            "QScrollBar::handle:vertical{background-color:#C0C4CC; border-radius:4px;}"
-            "QScrollBar::handle:vertical:hover{background-color:#909399;}"
-        );
         
         // 创建容器widget
         QWidget *scrollContent = new QWidget();
@@ -174,7 +153,7 @@ MonthView::MonthView(QWidget *parent)
         // 关闭按钮
         QHBoxLayout *closeLayout = new QHBoxLayout;
         QPushButton *closeBtn = new QPushButton("关闭");
-        closeBtn->setStyleSheet("background-color:#2D8CF0; color:#FFFFFF; font-size:12px; padding:4px 20px; border-radius:4px; border:none;");
+        closeBtn->setObjectName("closeBtn");
         closeLayout->addStretch();
         closeLayout->addWidget(closeBtn);
         closeLayout->addStretch();
@@ -192,7 +171,7 @@ MonthView::MonthView(QWidget *parent)
 
     // 日历主体
     QGroupBox* calendarGroup = new QGroupBox("📅 月度学习记录");
-    calendarGroup->setStyleSheet("QGroupBox{font-size:13px; font-weight:bold; color:#2D8CF0; border:2px solid #ECF5FF; border-radius:8px; padding:8px;}");
+    calendarGroup->setObjectName("calendarGroup");
     m_monthCalendarLayout = new QGridLayout(calendarGroup);
     m_monthCalendarLayout->setSpacing(4);  // 日历单元格间距极致紧凑
     

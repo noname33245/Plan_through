@@ -21,19 +21,14 @@ TimeAxis::TimeAxis(QWidget *parent)
         hourLayout->setSpacing(5);
 
         QLabel* timeLabel = new QLabel(QString("%1:00").arg(hour));
+        timeLabel->setObjectName("timeLabel");
         timeLabel->setMinimumWidth(45);
         timeLabel->setFixedWidth(50);
-        timeLabel->setStyleSheet("font-size:12px; font-weight:bold; color:#2D8CF0; text-align:center;");
         timeLabel->setAlignment(Qt::AlignCenter);
 
         QPushButton* axisBtn = new QPushButton("未安排");
         axisBtn->setObjectName(QString::number(hour));
         axisBtn->setEnabled(true);
-        axisBtn->setStyleSheet(
-            "QPushButton{font-size:12px; padding:6px 3px; border-radius:10px; border:none; background-color:#FFFFFF; color:#909399;}"
-            "QPushButton:hover{background-color:#F8F9FA; color:#606266;}"
-            "QPushButton:pressed{background-color:#F0F0F0;}"
-            "QPushButton[text!=\"未安排\"]{background-color:#ECF5FF; color:#2D8CF0; font-weight:bold;}");
         axisBtn->setMinimumHeight(30);  // 时间轴按钮高度压缩
         axisBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
@@ -52,11 +47,10 @@ TimeAxis::TimeAxis(QWidget *parent)
 void TimeAxis::onTimeAxisBtnClicked(int hour)
 {
     QDialog* dialog = new QDialog(this);
+    dialog->setObjectName("timeAxisBtnDialog");
     dialog->setWindowTitle("选择事项");
     dialog->setModal(true);
     dialog->resize(240, 260);
-    dialog->setStyleSheet("QDialog{background-color:#F5F7FA;border-radius:10px;border:none;}"
-                          "QLabel{font-size:13px;font-weight:bold;color:#2D8CF0;padding:6px 0;text-align:center;}");
 
     QVBoxLayout* layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(15,15,15,15);
@@ -68,10 +62,6 @@ void TimeAxis::onTimeAxisBtnClicked(int hour)
     QStringList types = {"学习", "吃饭", "睡觉", "洗澡", "游戏", "杂事"};
     for (const QString& type : types) {
         QPushButton* typeBtn = new QPushButton(type);
-        typeBtn->setStyleSheet(
-            "QPushButton{font-size:12px;padding:6px 0;border-radius:6px;border:none;background-color:#FFFFFF;color:#333333;}"
-            "QPushButton:hover{background-color:#ECF5FF;color:#2D8CF0;}"
-            "QPushButton:pressed{background-color:#2D8CF0;color:#FFFFFF;}");
         layout->addWidget(typeBtn);
 
         connect(typeBtn, &QPushButton::clicked, [=](){
@@ -84,14 +74,8 @@ void TimeAxis::onTimeAxisBtnClicked(int hour)
     btnGroupLayout->setSpacing(8);
     QPushButton* clearBtn = new QPushButton("清除");
     QPushButton* cancelBtn = new QPushButton("取消");
-    clearBtn->setStyleSheet(
-        "QPushButton{font-size:12px;font-weight:bold;padding:5px 0;border-radius:6px;border:none;background-color:#FF6B6B;color:#FFFFFF;width:80px;}"
-        "QPushButton:hover{background-color:#FF5252;}"
-        "QPushButton:pressed{background-color:#FF3B3B;}");
-    cancelBtn->setStyleSheet(
-        "QPushButton{font-size:12px;font-weight:bold;padding:5px 0;border-radius:6px;border:none;background-color:#C0C4CC;color:#FFFFFF;width:80px;}"
-        "QPushButton:hover{background-color:#909399;}"
-        "QPushButton:pressed{background-color:#606266;}");
+    clearBtn->setObjectName("clearBtn");
+    cancelBtn->setObjectName("cancelBtn");
 
     btnGroupLayout->addStretch();
     btnGroupLayout->addWidget(clearBtn);
@@ -125,40 +109,7 @@ void TimeAxis::confirmTimeAxisItem(int hour, const QString& type)
     if(m_timeAxisBtnMap.contains(hour)){
         QPushButton* btn = m_timeAxisBtnMap[hour];
         btn->setText(type);
-        
-        // 根据任务类型设置不同的颜色背景
-        QString styleSheet;
-        if (type == "学习") {
-            styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#ECF5FF;color:#2D8CF0;font-weight:bold;}"
-                         "QPushButton:hover{background-color:#E6F0FF;}"
-                         "QPushButton:pressed{background-color:#D9E8FF;}";
-        } else if (type == "吃饭") {
-            styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#E8F5E9;color:#2E7D32;font-weight:bold;}"
-                         "QPushButton:hover{background-color:#D4EDDA;color:#155724;}"
-                         "QPushButton:pressed{background-color:#C3E6CB;color:#155724;}";
-        } else if (type == "睡觉") {
-            styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#F3E5F5;color:#6A1B9A;font-weight:bold;}"
-                         "QPushButton:hover{background-color:#E1BEE7;color:#4A148C;}"
-                         "QPushButton:pressed{background-color:#CE93D8;color:#4A148C;}";
-        } else if (type == "洗澡") {
-            styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#E0F7FA;color:#006064;font-weight:bold;}"
-                         "QPushButton:hover{background-color:#B2EBF2;color:#004D40;}"
-                         "QPushButton:pressed{background-color:#80DEEA;color:#004D40;}";
-        } else if (type == "游戏") {
-            styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#FFEBEE;color:#C62828;font-weight:bold;}"
-                         "QPushButton:hover{background-color:#FFCDD2;color:#B71C1C;}"
-                         "QPushButton:pressed{background-color:#EF9A9A;color:#B71C1C;}";
-        } else if (type == "杂事") {
-            styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#FFF8E1;color:#E65100;font-weight:bold;}"
-                         "QPushButton:hover{background-color:#FFECB3;color:#E65100;}"
-                         "QPushButton:pressed{background-color:#FFE082;color:#E65100;}";
-        } else {
-            styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#ECF5FF;color:#2D8CF0;font-weight:bold;}"
-                         "QPushButton:hover{background-color:#E6F0FF;}"
-                         "QPushButton:pressed{background-color:#D9E8FF;}";
-        }
-        
-        btn->setStyleSheet(styleSheet);
+        btn->setStyle(QApplication::style());
     }
 
     data.totalProjects = data.timeAxisData.count();
@@ -184,10 +135,7 @@ void TimeAxis::clearCurrentHourItem(int hour)
 
     QPushButton* btn = m_timeAxisBtnMap[hour];
     btn->setText("未安排");
-    btn->setStyleSheet(
-        "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#FFFFFF;color:#909399;}"
-        "QPushButton:hover{background-color:#F8F9FA;color:#606266;}"
-        "QPushButton:pressed{background-color:#F0F0F0;}");
+    btn->setStyle(QApplication::style());
 
     appDatas.saveDataToFile();
     qobject_cast<DayView*>(widgetContainer("dayView"))->updateDayViewStats();

@@ -4,6 +4,7 @@
 #include "./appdatas.h"
 #include "./utils/datehelper.h"
 #include "./utils/widgetcontainer.h"
+#include <QStyle>
 
 DayView::DayView(QWidget *parent)
     : QWidget{parent}
@@ -11,6 +12,7 @@ DayView::DayView(QWidget *parent)
     widgetContainer("dayView",this);
     this->setObjectName("dayView");
     QVBoxLayout* pageLayout = new QVBoxLayout(this);
+    pageLayout->setObjectName("pageLayout");
     pageLayout->setContentsMargins(0, 0, 0, 0);
     pageLayout->setSpacing(10);  // 日视图间距紧凑
 
@@ -19,14 +21,7 @@ DayView::DayView(QWidget *parent)
     QPushButton* dateSelectBtn = new QPushButton("日期选择");
     QPushButton* todayBtn = new QPushButton("今日");
     QPushButton* clearBtn = new QPushButton("清除当日");
-
-    QString funcBtnStyle =
-        "QPushButton{font-size:12px; font-weight:bold; padding:5px 12px; border-radius:6px; border:none; background-color:#FFFFFF; color:#333333;}"
-        "QPushButton:hover{background-color:#F8F9FA;}"
-        "QPushButton:pressed{background-color:#E9ECEF;}";
-    clearBtn->setStyleSheet("QPushButton{font-size:12px; font-weight:bold; padding:5px 12px; border-radius:6px; border:none; background-color:#FF6B6B; color:#FFFFFF;}"
-                            "QPushButton:hover{background-color:#FF5252;}"
-                            "QPushButton:pressed{background-color:#FF3B3B;}");
+    clearBtn->setObjectName("clearBtn");
 
     dateBtnLayout->addWidget(dateSelectBtn);
     dateBtnLayout->addWidget(todayBtn);
@@ -37,14 +32,15 @@ DayView::DayView(QWidget *parent)
 
 
     QGroupBox* progressGroup = new QGroupBox;
-    progressGroup->setStyleSheet("QGroupBox{font-size:13px; font-weight:bold; color:#2D8CF0; border:2px solid #ECF5FF; border-radius:8px; padding:8px; margin:0;}");
+    progressGroup->setObjectName("progressGroup");
+
     QVBoxLayout* progressLayout = new QVBoxLayout(progressGroup);
 
     QHBoxLayout* progressHeaderLayout = new QHBoxLayout;
     QLabel* progressTitle = new QLabel("📚 学习进度");
-    progressTitle->setStyleSheet("font-size:13px; font-weight:bold; color:#2D8CF0;");
+    progressTitle->setObjectName("progressTitle");
     m_selectedDateLabel = new QLabel();
-    m_selectedDateLabel->setStyleSheet("font-size:12px; font-weight:bold; color:#2D8CF0; padding:0 3px;");
+    m_selectedDateLabel->setObjectName("selectedDateLabel");
     m_selectedDateLabel->setText(QString("当前日期：%1").arg(DateHelper::currentDate().toString("yyyy年MM月dd日")));
     progressHeaderLayout->addWidget(progressTitle);
     progressHeaderLayout->addStretch();
@@ -52,17 +48,16 @@ DayView::DayView(QWidget *parent)
 
     // 创建今日学习和设置目标的水平布局
     QHBoxLayout* todayStudyLayout = new QHBoxLayout;
+    todayStudyLayout->setObjectName("todayStudyLayout");
     m_todayStudyHourLabel = new QLabel();
-    m_todayStudyHourLabel->setStyleSheet("font-size:12px; font-weight:bold; color:#333333; padding:4px 0;");
+    m_todayStudyHourLabel->setObjectName("todayStudyHourLabel");
     // 使用HTML格式化文本，将目标部分设为绿色
     m_todayStudyHourLabel->setText(QString("今日学习：0小时 / <font color='#27AE60'>目标%1小时</font>").arg(appDatas.targetHour()));
     m_todayStudyHourLabel->setTextFormat(Qt::RichText);
 
     // 添加设置目标按钮
     QPushButton* setTargetBtn = new QPushButton("设置目标");
-    setTargetBtn->setStyleSheet("QPushButton{font-size:12px; font-weight:bold; padding:5px 12px; border-radius:6px; border:none; background-color:#27AE60; color:#FFFFFF;}"
-                                "QPushButton:hover{background-color:#219653;}"
-                                "QPushButton:pressed{background-color:#1E8845;}");
+    setTargetBtn->setObjectName("setTargetBtn");
 
     todayStudyLayout->addWidget(m_todayStudyHourLabel);
     todayStudyLayout->addStretch();
@@ -82,18 +77,19 @@ DayView::DayView(QWidget *parent)
     connect(setTargetBtn, &QPushButton::clicked, this, &DayView::showSetTargetDialog);
 
     QGroupBox* statsGroup = new QGroupBox("📊 打卡统计");
-    statsGroup->setStyleSheet("QGroupBox{font-size:13px; font-weight:bold; color:#2D8CF0; border:2px solid #ECF5FF; border-radius:8px; padding:8px;}");
+    statsGroup->setObjectName("statsGroup");
     QGridLayout* statsLayout = new QGridLayout(statsGroup);
     statsLayout->setSpacing(10);  // 统计项间距紧凑
     m_continuousDaysLabel = new QLabel("当前连续天数：0");
     m_maxContinuousDaysLabel = new QLabel("最长连续天数：0");
     m_completedProjectsLabel = new QLabel("已完成项目：0/0");
     m_studyCheckLabel = new QLabel(QString("学习打卡：0/%1").arg(0));
-    QString statLabelStyle = "font-size:12px; font-weight:bold; color:#555555; padding:2px;";
-    m_continuousDaysLabel->setStyleSheet(statLabelStyle);
-    m_maxContinuousDaysLabel->setStyleSheet(statLabelStyle);
-    m_completedProjectsLabel->setStyleSheet(statLabelStyle);
-    m_studyCheckLabel->setStyleSheet(statLabelStyle);
+
+    m_continuousDaysLabel->setObjectName("continuousDaysLabel");
+    m_maxContinuousDaysLabel->setObjectName("maxContinuousDaysLabel");
+    m_completedProjectsLabel->setObjectName("completedProjectsLabel");
+    m_studyCheckLabel->setObjectName("studyCheckLabel");
+
     statsLayout->addWidget(m_continuousDaysLabel, 0, 0);
     statsLayout->addWidget(m_maxContinuousDaysLabel, 0, 1);
     statsLayout->addWidget(m_completedProjectsLabel, 1, 0);
@@ -102,10 +98,7 @@ DayView::DayView(QWidget *parent)
 
     QScrollArea* timeAxisScroll = new QScrollArea(this);
     timeAxisScroll->setWidgetResizable(true);
-    timeAxisScroll->setStyleSheet("QScrollArea{border:none; background-color:transparent;}"
-                                  "QScrollBar:vertical{width:6px; background-color:#F5F7FA; border-radius:3px;}"
-                                  "QScrollBar::handle:vertical{background-color:#C0C4CC; border-radius:3px;}"
-                                  "QScrollBar::handle:vertical:hover{background-color:#909399;}");
+    timeAxisScroll->setObjectName("timeAxisScroll");
     m_timeAxisWidget = new TimeAxis(this);
     timeAxisScroll->setWidget(m_timeAxisWidget);
     pageLayout->addWidget(timeAxisScroll);
@@ -145,19 +138,17 @@ void DayView::updateDayViewStats()
 void DayView::showDateSelectDialog()
 {
     QDialog* dialog = new QDialog(this);
+    dialog->setObjectName("dateSelectDialog");
     dialog->setWindowTitle("选择日期");
     dialog->setModal(true);
     dialog->resize(260, 200);  // 弹窗尺寸紧凑
-    dialog->setStyleSheet("QDialog{background-color:#F5F7FA;border-radius:10px;border:none;}"
-                          "QCalendarWidget{background-color:#FFFFFF;border-radius:6px;border:1px solid #ECF5FF;}"
-                          "QPushButton{font-size:12px;font-weight:bold;padding:5px 15px;border-radius:6px;border:none;background-color:#2D8CF0;color:#FFFFFF;margin-top:8px;}"
-                          "QPushButton:hover{background-color:#1D7AD9;}");
+
     QVBoxLayout* layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(15,15,15,15);
     layout->setSpacing(8);
     QCalendarWidget* calendar = new QCalendarWidget;
     calendar->setSelectedDate(DateHelper::currentDate());
-    calendar->setStyleSheet("QCalendarWidget{font-size:10px;}");
+
     layout->addWidget(calendar);
 
     QPushButton* confirmBtn = new QPushButton("确定");
@@ -187,11 +178,10 @@ void DayView::setToTodayDate()
 void DayView::showSetTargetDialog()
 {
     QDialog* dialog = new QDialog(this);
+    dialog->setObjectName("setTargetDialog");
     dialog->setWindowTitle("设置每日学习目标");
     dialog->setModal(true);
     dialog->resize(240, 280);  // 弹窗尺寸紧凑
-    dialog->setStyleSheet("QDialog{background-color:#F5F7FA;border-radius:10px;border:none;}"
-                          "QLabel{font-size:13px;font-weight:bold;color:#27AE60;padding:6px 0;text-align:center;}");
 
     QVBoxLayout* layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(15,15,15,15);
@@ -203,10 +193,7 @@ void DayView::showSetTargetDialog()
     QList<int> targetHours = {1,2,3,4,5,6,7,8};
     for (int hour : targetHours) {
         QPushButton* hourBtn = new QPushButton(QString("%1 小时").arg(hour));
-        hourBtn->setStyleSheet(
-            "QPushButton{font-size:12px;padding:6px 0;border-radius:6px;border:none;background-color:#FFFFFF;color:#333333;}"
-            "QPushButton:hover{background-color:#F0F9F0;color:#27AE60;}"
-            "QPushButton:pressed{background-color:#27AE60;color:#FFFFFF;font-weight:bold;}");
+        hourBtn->setObjectName("hourBtn");
         layout->addWidget(hourBtn);
 
         connect(hourBtn, &QPushButton::clicked, [=](){
@@ -224,10 +211,7 @@ void DayView::showSetTargetDialog()
     }
 
     QPushButton* cancelBtn = new QPushButton("取消");
-    cancelBtn->setStyleSheet(
-        "QPushButton{font-size:12px;font-weight:bold;padding:5px 0;border-radius:6px;border:none;background-color:#C0C4CC;color:#FFFFFF;width:80px;margin-top:3px;}"
-        "QPushButton:hover{background-color:#909399;}"
-        "QPushButton:pressed{background-color:#606266;}");
+    cancelBtn->setObjectName("cancelBtn");
     QHBoxLayout* btnLayout = new QHBoxLayout;
     btnLayout->addStretch();
     btnLayout->addWidget(cancelBtn);
@@ -246,11 +230,9 @@ void DayView::clearCurrentData()
     for(int hour : hours)
     {
         QPushButton* btn = m_timeAxisWidget->operator[](hour);
+
         btn->setText("未安排");
-        btn->setStyleSheet(
-            "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#FFFFFF;color:#909399;}"
-            "QPushButton:hover{background-color:#F8F9FA;color:#606266;}"
-            "QPushButton:pressed{background-color:#F0F0F0;}");
+        btn->setObjectName("unPlanned");
     }
     appDatas.saveDataToFile();
     loadDateData(DateHelper::currentDate());
@@ -274,50 +256,12 @@ void DayView::loadDateData(const QDate& date)
         {
             TimeAxisItem item = data.timeAxisData[hour];
             btn->setText(item.type);
-            
-            // 根据任务类型设置不同的颜色背景
-            QString styleSheet;
-            QString type = item.type;
-            if (type == "学习") {
-                styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#ECF5FF;color:#2D8CF0;font-weight:bold;}"
-                             "QPushButton:hover{background-color:#E6F0FF;}"
-                             "QPushButton:pressed{background-color:#D9E8FF;}";
-            } else if (type == "吃饭") {
-                styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#E8F5E9;color:#2E7D32;font-weight:bold;}"
-                             "QPushButton:hover{background-color:#D4EDDA;color:#155724;}"
-                             "QPushButton:pressed{background-color:#C3E6CB;color:#155724;}";
-            } else if (type == "睡觉") {
-                styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#F3E5F5;color:#6A1B9A;font-weight:bold;}"
-                             "QPushButton:hover{background-color:#E1BEE7;color:#4A148C;}"
-                             "QPushButton:pressed{background-color:#CE93D8;color:#4A148C;}";
-            } else if (type == "洗澡") {
-                styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#E0F7FA;color:#006064;font-weight:bold;}"
-                             "QPushButton:hover{background-color:#B2EBF2;color:#004D40;}"
-                             "QPushButton:pressed{background-color:#80DEEA;color:#004D40;}";
-            } else if (type == "游戏") {
-                styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#FFEBEE;color:#C62828;font-weight:bold;}"
-                             "QPushButton:hover{background-color:#FFCDD2;color:#B71C1C;}"
-                             "QPushButton:pressed{background-color:#EF9A9A;color:#B71C1C;}";
-            } else if (type == "杂事") {
-                styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#FFF8E1;color:#E65100;font-weight:bold;}"
-                             "QPushButton:hover{background-color:#FFECB3;color:#E65100;}"
-                             "QPushButton:pressed{background-color:#FFE082;color:#E65100;}";
-            } else {
-                styleSheet = "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#ECF5FF;color:#2D8CF0;font-weight:bold;}"
-                             "QPushButton:hover{background-color:#E6F0FF;}"
-                             "QPushButton:pressed{background-color:#D9E8FF;}";
-            }
-            
-            btn->setStyleSheet(styleSheet);
         }
         else
         {
             btn->setText("未安排");
-            btn->setStyleSheet(
-                "QPushButton{font-size:12px;padding:6px 3px;border-radius:10px;border:none;background-color:#FFFFFF;color:#909399;}"
-                "QPushButton:hover{background-color:#F8F9FA;color:#606266;}"
-                "QPushButton:pressed{background-color:#F0F0F0;}");
         }
+        btn->setStyle(QApplication::style());
     }
 }
 

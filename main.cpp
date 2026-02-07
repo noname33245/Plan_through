@@ -6,6 +6,8 @@
 #define SERVER_NAME "PlanThrough_SingleInstance_Server"
 static MainWindow *g_mainWindow = nullptr;
 
+QString loadQss();
+
 int main(int argc, char *argv[])
 {
     try {

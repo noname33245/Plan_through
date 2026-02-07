@@ -1,5 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>16.ico</file>
+        <file>style0.qss</file>
+        <file>style1.qss</file>
     </qresource>
 </RCC>

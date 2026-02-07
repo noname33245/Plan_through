@@ -1,0 +1,533 @@
+QMainWindow{
+    background-color: #FFFFFF;
+    border: none;
+}
+
+*{
+    color:#333333;
+}
+QLabel{
+    color:#333333;
+}
+QGroupBox{
+    color:#333333;
+    font-weight:bold;
+}
+
+DayView QProgressBar{
+    border:none;
+    border-radius:6px;
+    height:22px;
+    background-color:#F0F0F0;
+    font-size:12px;
+    font-weight:bold;
+    color:#333333;
+}
+DayView QProgressBar::chunk{
+    background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7CE0);
+    border-radius:6px;
+}
+
+DayView>#targetHourShowLabel{
+    font-size:12px;
+    font-weight:bold;
+    color:#27AE60;
+    padding:0 6px;
+}
+
+DayView>#clearBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 12px;
+    border-radius:6px;
+    border:none;
+    background-color:#FF6B6B;
+    color:#FFFFFF;
+}
+
+DayView>#clearBtn:hover{
+    background-color:#FF5252;
+}
+
+DayView>#clearBtn:pressed{
+    background-color:#FF3B3B;
+}
+
+DayView #setTargetBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 12px;
+    border-radius:6px;
+    border:none;
+    background-color:#27AE60;
+    color:#FFFFFF;
+}
+
+DayView #setTargetBtn:hover{
+    background-color:#219653;
+}
+
+DayView #setTargetBtn:pressed{
+    background-color:#1E8845;
+}
+
+DayView>#progressGroup{
+    font-size:13px;
+    font-weight:bold;
+    color:#2D8CF0;
+    border:2px solid #ECF5FF;
+    border-radius:8px;
+    padding:8px;
+    margin:0;
+}
+
+DayView #progressTitle{
+    font-size:13px;
+    font-weight:bold;
+    color:#2D8CF0;
+}
+
+DayView #selectedDateLabel{
+    font-size:12px;
+    font-weight:bold;
+    color:#2D8CF0;
+    padding:0 3px;
+}
+
+DayView #todayStudyHourLabel{
+    font-size:12px;
+    font-weight:bold;
+    color:#333333;
+    padding:4px 0;
+}
+
+DayView #statsGroup{
+    font-size:13px;
+    font-weight:bold;
+    color:#2D8CF0;
+    border:2px solid #ECF5FF;
+    border-radius:8px;
+    padding:8px;
+}
+
+DayView #continuousDaysLabel,
+DayView #maxContinuousDaysLabel,
+DayView #completedProjectsLabel,
+DayView #studyCheckLabel{
+    font-size:12px;
+    font-weight:bold;
+    color:#555555;
+    padding:2px;
+}
+
+DayView #timeAxisScroll{
+    border:none;
+    background-color:transparent;
+}
+
+DayView #timeAxisScroll QScrollBar:vertical{
+    width:6px;
+    background-color:#F5F7FA;
+    border-radius:3px;
+}
+
+DayView #timeAxisScroll QScrollBar::handle:vertical{
+    background-color:#C0C4CC;
+    border-radius:3px;
+}
+
+DayView #timeAxisScroll QScrollBar::handle:vertical:hover{
+    background-color:#909399;
+}
+
+#dateSelectDialog{
+    background-color:#F5F7FA;
+    border-radius:10px;
+    border:none;
+}
+
+#dateSelectDialog QCalendarWidget{
+    background-color:#FFFFFF;
+    border-radius:6px;
+    border:1px solid #ECF5FF;
+}
+
+#dateSelectDialog QPushButton{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 15px;
+    border-radius:6px;
+    border:none;
+    background-color:#2D8CF0;
+    color:#FFFFFF;
+    margin-top:8px;
+}
+
+#dateSelectDialog QPushButton:hover{
+    background-color:#1D7AD9;
+}
+
+#setTargetDialog{
+    background-color:#F5F7FA;
+    border-radius:10px;
+    border:none;
+}
+
+#setTargetDialog QLabel{
+    font-size:13px;
+    font-weight:bold;
+    color:#27AE60;
+    padding:6px 0;
+    text-align:center;
+}
+
+#setTargetDialog #hourBtn{
+    font-size:12px;
+    padding:6px 0;
+    border-radius:6px;
+    border:none;
+    background-color:#FFFFFF;
+    color:#333333;
+}
+
+#setTargetDialog #hourBtn:hover{
+    background-color:#F0F9F0;
+    color:#27AE60;
+}
+
+#setTargetDialog #hourBtn:pressed{
+    background-color:#27AE60;
+    color:#FFFFFF;
+    font-weight:bold;
+}
+
+#setTargetDialog cancelBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 0;
+    border-radius:6px;
+    border:none;
+    background-color:#C0C4CC;
+    color:#FFFFFF;
+    width:80px;
+    margin-top:3px;
+}
+
+#setTargetDialog cancelBtn:hover{
+    background-color:#909399;
+}
+
+#setTargetDialog cancelBtn:pressed{
+    background-color:#606266;
+}
+
+#timeAxis QPushButton[text="未安排"]{
+    font-size:12px;
+    padding:6px 3px;
+    border-radius:10px;
+    border:none;
+    background-color:#FFFFFF;
+    color:#909399;
+}
+
+#timeAxis QPushButton[text="未安排"]:hover{
+    background-color:#F8F9FA;
+    color:#606266;
+}
+
+#timeAxis QPushButton[text="未安排"]:pressed{
+    background-color:#F0F0F0;
+}
+
+#timeAxis QPushButton[text="学习"]{
+    font-size:12px;
+    padding:6px 3px;
+    border-radius:10px;
+    border:none;
+    background-color:#ECF5FF;
+    color:#2D8CF0;
+    font-weight:bold;
+}
+
+#timeAxis QPushButton[text="学习"]:hover{
+    background-color:#E6F0FF;
+    }
+
+#timeAxis QPushButton[text="学习"]:pressed{
+    background-color:#D9E8FF;
+}
+
+#timeAxis QPushButton[text="吃饭"]{
+    font-size:12px;
+    padding:6px 3px;
+    border-radius:10px;
+    border:none;
+    background-color:#E8F5E9;
+    color:#2E7D32;
+    font-weight:bold;
+}
+
+#timeAxis QPushButton[text="吃饭"]:hover{
+    background-color:#D4EDDA;
+    color:#155724;
+}
+
+#timeAxis QPushButton[text="吃饭"]:pressed{
+    background-color:#C3E6CB;
+    color:#155724;
+}
+
+#timeAxis QPushButton[text="睡觉"]{
+    font-size:12px;
+    padding:6px 3px;
+    border-radius:10px;
+    border:none;
+    background-color:#F3E5F5;
+    color:#6A1B9A;
+    font-weight:bold;
+}
+
+#timeAxis QPushButton[text="睡觉"]:hover{
+    background-color:#E1BEE7;
+    color:#4A148C;
+}
+
+#timeAxis QPushButton[text="睡觉"]:pressed{
+    background-color:#CE93D8;
+    color:#4A148C;
+}
+
+#timeAxis QPushButton[text="洗澡"]{
+    font-size:12px;
+    padding:6px 3px;
+    border-radius:10px;
+    border:none;
+    background-color:#E0F7FA;
+    color:#006064;
+    font-weight:bold;
+}
+
+#timeAxis QPushButton[text="洗澡"]:hover{
+    background-color:#B2EBF2;
+    color:#004D40;
+}
+
+#timeAxis QPushButton[text="洗澡"]:pressed{
+    background-color:#80DEEA;
+    color:#004D40;
+}
+
+#timeAxis QPushButton[text="游戏"]{
+    font-size:12px;
+    padding:6px 3px;
+    border-radius:10px;
+    border:none;
+    background-color:#FFEBEE;
+    color:#C62828;
+    font-weight:bold;
+}
+
+#timeAxis QPushButton[text="游戏"]:hover{
+    background-color:#FFCDD2;
+    color:#B71C1C;
+}
+
+#timeAxis QPushButton[text="游戏"]:pressed{
+    background-color:#EF9A9A;
+    color:#B71C1C;
+}
+
+#timeAxis QPushButton[text="杂事"]{
+    font-size:12px;
+    padding:6px 3px;
+    border-radius:10px;
+    border:none;
+    background-color:#FFF8E1;
+    color:#E65100;
+    font-weight:bold;
+}
+
+#timeAxis QPushButton[text="杂事"]:hover{
+    background-color:#FFECB3;
+    color:#E65100;
+}
+
+#timeAxis QPushButton[text="杂事"]:pressed{
+    background-color:#FFE082;
+    color:#E65100;
+}
+
+#timeAxis #clearBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 0;
+    border-radius:6px;
+    border:none;
+    background-color:#FF6B6B;
+    color:#FFFFFF;
+    width:80px;
+}
+
+#timeAxis #clearBtn:hover{
+    background-color:#FF5252;
+}
+
+#timeAxis #clearBtn:pressed{
+    background-color:#FF3B3B;
+}
+
+#timeAxis #cancelBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 0;
+    border-radius:6px;
+    border:none;
+    background-color:#C0C4CC;
+    color:#FFFFFF;
+    width:80px;
+}
+
+#timeAxis #cancelBtn:hover{
+    background-color:#909399;
+}
+
+#timeAxis #cancelBtn:pressed{
+    background-color:#606266;
+}
+
+#timeAxis #timeLabel{
+    font-size:12px;
+    font-weight:bold;
+    color:#2D8CF0;
+    text-align:center;
+}
+
+#timeAxis #timeAxisBtnDialog{
+    background-color:#F5F7FA;
+    border-radius:10px;
+    border:none;
+}
+
+#timeAxis #timeAxisBtnDialog QLabel{
+    font-size:13px;
+    font-weight:bold;
+    color:#2D8CF0;
+    padding:6px 0;
+    text-align:center;
+}
+
+#monthView #monthTitleLabel{
+    font-size:15px;
+    font-weight:bold;
+    color:#2D8CF0;
+    padding:0 10px;
+}
+
+#monthView #monthBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 10px;
+    border-radius:6px;
+    border:none;
+    background-color:#FFFFFF;
+    color:#333333;
+}
+
+#monthView #monthBtn:hover{
+    background-color:#F0F0F0;
+}
+
+#monthView #monthBtn:pressed{
+    background-color:#E0E0E0;
+}
+
+#monthView #currentMonthBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 10px;
+    border-radius:6px;
+    border:none;
+    background-color:#2D8CF0;
+    color:#FFFFFF;
+}
+
+#monthView #currentMonthBtn:hover{
+    background-color:#1D7AD9;
+}
+
+#monthView #currentMonthBtn:pressed{
+    background-color:#1D7AD9;
+}
+
+#monthView #statisticsBtn{
+    font-size:12px;
+    font-weight:bold;
+    padding:5px 10px;
+    border-radius:6px;
+    border:none;
+    background-color:#52C41A;
+    color:#FFFFFF;
+}
+
+#monthView #statisticsBtn:hover{
+    background-color:#4CAF50;
+}
+
+#monthView #statisticsBtn:pressed{
+    background-color:#45a049;
+}
+
+#statsDlg{
+    background-color:#FFFFFF;
+    border-radius:10px;
+    border:1px solid #EEEEEE;
+}
+
+#statsDlg QLabel{
+    font-size:12px;
+    color:#333333;
+}
+
+#statsDlg QGroupBox{
+    font-size:14px;
+    font-weight:bold;
+    color:#333333;
+    border:1px solid #DDDDDD;
+    border-radius:6px;
+    margin-top:10px;
+    padding-top:15px;
+}
+
+#statsDlg QGroupBox::title{
+    subcontrol-origin:margin;
+    left:10px;
+    padding:0 5px 0 5px;
+}
+
+#statsDlg QScrollArea{
+    border:none;
+}
+
+#statsDlg QScrollArea QScrollBar:vertical{
+    width:8px;
+    background-color:#F5F7FA;
+    border-radius:4px;
+}
+
+#statsDlg QScrollArea QScrollBar::handle:vertical{
+    background-color:#C0C4CC;
+    border-radius:4px;
+}
+
+#statsDlg QScrollArea QScrollBar::handle:vertical:hover{
+    background-color:#909399;
+}
+
+#statsDlg #closeBtn{
+    background-color:#2D8CF0;
+    color:#FFFFFF;
+    font-size:12px;
+    padding:4px 20px;
+    border-radius:4px;
+    border:none;
+}
