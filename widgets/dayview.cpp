@@ -73,8 +73,7 @@ DayView::DayView(QWidget *parent)
     progressLayout->addWidget(m_dayProgressBar);
     pageLayout->addWidget(progressGroup);
 
-    // 连接设置目标按钮信号
-    connect(setTargetBtn, &QPushButton::clicked, this, &DayView::showSetTargetDialog);
+
 
     QGroupBox* statsGroup = new QGroupBox("📊 打卡统计");
     statsGroup->setObjectName("statsGroup");
@@ -82,7 +81,7 @@ DayView::DayView(QWidget *parent)
     statsLayout->setSpacing(10);  // 统计项间距紧凑
     m_continuousDaysLabel = new QLabel("当前连续天数：0");
     m_maxContinuousDaysLabel = new QLabel("最长连续天数：0");
-    m_completedProjectsLabel = new QLabel("已完成项目：0/0");
+    m_completedProjectsLabel = new QLabel("已完成项目：0");
     m_studyCheckLabel = new QLabel(QString("学习打卡：0/%1").arg(0));
 
     m_continuousDaysLabel->setObjectName("continuousDaysLabel");
@@ -131,7 +130,7 @@ void DayView::updateDayViewStats()
 
     m_continuousDaysLabel->setText(QString("当前连续天数：%1").arg(continuousDays));
     m_maxContinuousDaysLabel->setText(QString("最长连续天数：%1").arg(appDatas.maxContinDays()));
-    m_completedProjectsLabel->setText(QString("已完成项目：%1/%2").arg(data.completedProjects).arg(data.totalProjects));
+    m_completedProjectsLabel->setText(QString("已完成项目：%1").arg(data.completedProjects));
     m_studyCheckLabel->setText(QString("学习打卡：%1/%2").arg(data.studyHours).arg(appDatas.targetHour()));
 }
 
@@ -207,18 +206,30 @@ void DayView::showSetTargetDialog()
                     m_dayProgressBar->setValue(appDatas[DateHelper::currentDate()].studyHours);
                 m_dayProgressBar->update();
                 dialog->close();
+                dialog->deleteLater();
             });
     }
 
     QPushButton* cancelBtn = new QPushButton("取消");
     cancelBtn->setObjectName("cancelBtn");
+    // 设置与其他功能按钮一致的样式
+    cancelBtn->setStyleSheet(
+        "QPushButton{font-size:12px; font-weight:bold; padding:5px 12px; border-radius:6px; border:none; background-color:#FFFFFF; color:#333333;}"
+        "QPushButton:hover{background-color:#F8F9FA;}"
+        "QPushButton:pressed{background-color:#E9ECEF;}");
     QHBoxLayout* btnLayout = new QHBoxLayout;
     btnLayout->addStretch();
     btnLayout->addWidget(cancelBtn);
     btnLayout->addStretch();
     layout->addLayout(btnLayout);
 
-    connect(cancelBtn, &QPushButton::clicked, dialog, &QDialog::close);
+    connect(cancelBtn, &QPushButton::clicked, [=](){
+        dialog->close();
+        dialog->deleteLater();
+    });
+
+    // 处理对话框关闭事件
+    connect(dialog, &QDialog::finished, dialog, &QDialog::deleteLater);
 
     dialog->exec();
 }

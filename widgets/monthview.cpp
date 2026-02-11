@@ -58,8 +58,8 @@ MonthView::MonthView(QWidget *parent)
         // 创建容器widget
         QWidget *scrollContent = new QWidget();
         QVBoxLayout *statsLayout = new QVBoxLayout(scrollContent);
-        statsLayout->setSpacing(15);
-        statsLayout->setContentsMargins(20, 20, 20, 20);
+        statsLayout->setSpacing(10);
+        statsLayout->setContentsMargins(15, 15, 15, 15);
         
         // 设置对话框布局
         QVBoxLayout *dlgLayout = new QVBoxLayout(statsDlg);
@@ -67,10 +67,10 @@ MonthView::MonthView(QWidget *parent)
         dlgLayout->addWidget(scrollArea);
 
         // 学习时长统计
-        QGroupBox *studyHoursGroup = new QGroupBox("学习时长统计");
+        QGroupBox *studyHoursGroup = new QGroupBox("学习统计");
         QGridLayout *studyHoursLayout = new QGridLayout(studyHoursGroup);
-        studyHoursLayout->setSpacing(10);
-        studyHoursLayout->setContentsMargins(15, 15, 15, 15);
+        studyHoursLayout->setSpacing(8);
+        studyHoursLayout->setContentsMargins(10, 10, 10, 10);
 
         studyHoursLayout->addWidget(new QLabel("总学习天数："), 0, 0, 1, 1, Qt::AlignRight);
         studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getTotalStudyDays()) + " 天"), 0, 1, 1, 1, Qt::AlignLeft);
@@ -78,28 +78,10 @@ MonthView::MonthView(QWidget *parent)
         studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getTotalStudyHours()) + " 小时"), 1, 1, 1, 1, Qt::AlignLeft);
         studyHoursLayout->addWidget(new QLabel("平均每天学习时长："), 2, 0, 1, 1, Qt::AlignRight);
         studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getAverageStudyHoursPerDay(), 'f', 1) + " 小时"), 2, 1, 1, 1, Qt::AlignLeft);
-
-        // 项目完成情况统计
-        QGroupBox *projectsGroup = new QGroupBox("项目完成情况");
-        QGridLayout *projectsLayout = new QGridLayout(projectsGroup);
-        projectsLayout->setSpacing(10);
-        projectsLayout->setContentsMargins(15, 15, 15, 15);
-
-        projectsLayout->addWidget(new QLabel("总项目数："), 0, 0, 1, 1, Qt::AlignRight);
-        projectsLayout->addWidget(new QLabel(QString::number(appDatas.getTotalProjects()) + " 个"), 0, 1, 1, 1, Qt::AlignLeft);
-        projectsLayout->addWidget(new QLabel("完成项目数："), 1, 0, 1, 1, Qt::AlignRight);
-        projectsLayout->addWidget(new QLabel(QString::number(appDatas.getCompletedProjects()) + " 个"), 1, 1, 1, 1, Qt::AlignLeft);
-        projectsLayout->addWidget(new QLabel("项目完成率："), 2, 0, 1, 1, Qt::AlignRight);
-        projectsLayout->addWidget(new QLabel(QString::number(appDatas.getProjectCompletionRate(), 'f', 1) + "%"), 2, 1, 1, 1, Qt::AlignLeft);
-
-        // 最大连续天数
-        QGroupBox *continuousGroup = new QGroupBox("连续学习");
-        QGridLayout *continuousLayout = new QGridLayout(continuousGroup);
-        continuousLayout->setSpacing(10);
-        continuousLayout->setContentsMargins(15, 15, 15, 15);
-
-        continuousLayout->addWidget(new QLabel("最大连续学习天数："), 0, 0, 1, 1, Qt::AlignRight);
-        continuousLayout->addWidget(new QLabel(QString::number(appDatas.maxContinDays()) + " 天"), 0, 1, 1, 1, Qt::AlignLeft);
+        studyHoursLayout->addWidget(new QLabel("完成项目数："), 3, 0, 1, 1, Qt::AlignRight);
+        studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getCompletedProjects()) + " 个"), 3, 1, 1, 1, Qt::AlignLeft);
+        studyHoursLayout->addWidget(new QLabel("最大连续学习天数："), 4, 0, 1, 1, Qt::AlignRight);
+        studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.maxContinDays()) + " 天"), 4, 1, 1, 1, Qt::AlignLeft);
 
         // 最近30天学习趋势折线图
         QGroupBox *lineChartGroup = new QGroupBox("最近30天学习趋势");
@@ -142,12 +124,10 @@ MonthView::MonthView(QWidget *parent)
         
         QChartView *lineChartView = new QChartView(lineChart);
         lineChartView->setRenderHint(QPainter::Antialiasing);
-        lineChartView->setMinimumHeight(200);
+        lineChartView->setMinimumHeight(150);
         lineChartLayout->addWidget(lineChartView);
 
         statsLayout->addWidget(studyHoursGroup);
-        statsLayout->addWidget(projectsGroup);
-        statsLayout->addWidget(continuousGroup);
         statsLayout->addWidget(lineChartGroup);
 
         // 关闭按钮
