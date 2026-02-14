@@ -863,14 +863,16 @@ bool AppDatas::restoreFromBackup(const QString& backupPath)
     return true;
 }
 
-// 获取总学习天数
+// 获取总学习天数（仅统计有学习记录的天数）
 // 返回：总学习天数
 int AppDatas::getTotalStudyDays() const
 {
     int totalDays = 0;
     QMap<QDate, DateStudyData>::const_iterator it = m_studyDataMap.constBegin();
     while (it != m_studyDataMap.constEnd()) {
-        totalDays++;
+        if (it.value().studyHours > 0) {
+            totalDays++;
+        }
         ++it;
     }
     return totalDays;
