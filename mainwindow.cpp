@@ -357,7 +357,7 @@ void MainWindow::showSettingsWindow()
 {
     QDialog *settingsDlg = new QDialog(this);
     settingsDlg->setWindowTitle("软件设置");
-    settingsDlg->setFixedSize(350, 450);
+    settingsDlg->setFixedSize(350, 500);
     settingsDlg->setModal(true);
     
     // 禁用所有可能的窗口动画效果
@@ -469,10 +469,14 @@ void MainWindow::showSettingsWindow()
     QHBoxLayout *intervalLayout = new QHBoxLayout;
     QLabel *intervalLab = new QLabel("检测间隔：");
     QComboBox *intervalCbx = new QComboBox;
-    intervalCbx->addItems({"5分钟", "10分钟", "15分钟", "20分钟", "25分钟", "30分钟"});
+    intervalCbx->addItems({"1分钟", "2分钟", "5分钟", "10分钟", "15分钟", "20分钟", "25分钟", "30分钟"});
     // 根据appdatas中的设置初始化
     int interval = appDatas.memoryCleanInterval();
-    int intervalIndex = qMax(0, qMin(5, (interval / 5) - 1));
+    int intervalIndex = 0;
+    if (interval == 1) intervalIndex = 0;
+    else if (interval == 2) intervalIndex = 1;
+    else if (interval >= 5 && interval <= 30) intervalIndex = qMax(2, qMin(7, 2 + (interval / 5) - 1));
+    else intervalIndex = 1; // 默认2分钟
     intervalCbx->setCurrentIndex(intervalIndex);
     intervalLayout->addWidget(intervalLab);
     intervalLayout->addWidget(intervalCbx);
@@ -491,10 +495,46 @@ void MainWindow::showSettingsWindow()
     thresholdLayout->addWidget(thresholdCbx);
     thresholdLayout->addStretch();
     
+    // 下次扫描内存倒计时和当前内存使用率
+    QHBoxLayout *nextScanLayout = new QHBoxLayout;
+    QLabel *nextScanLab = new QLabel("下次扫描：");
+    QLabel *nextScanTimeLab = new QLabel("--:--:--");
+    QLabel *memoryUsageLab = new QLabel("当前内存：--%");
+    nextScanLayout->addWidget(nextScanLab);
+    nextScanLayout->addWidget(nextScanTimeLab);
+    nextScanLayout->addStretch();
+    nextScanLayout->addWidget(memoryUsageLab);
+    
     // 添加到自动内存清理布局
     autoMemoryCleanLayout->addLayout(enableAutoCleanLayout);
     autoMemoryCleanLayout->addLayout(intervalLayout);
     autoMemoryCleanLayout->addLayout(thresholdLayout);
+    autoMemoryCleanLayout->addLayout(nextScanLayout);
+    
+    // 创建倒计时更新定时器
+    QTimer *countdownTimer = new QTimer(settingsDlg);
+    int updateCount = 0;
+    connect(countdownTimer, &QTimer::timeout, [=, &updateCount]() {
+        // 每秒更新一次下次扫描时间
+        if (m_isAutoMemoryCleanEnabled && m_memoryCleanTimer->isActive()) {
+            // 计算剩余时间
+            int remainingTime = m_memoryCleanTimer->remainingTime() / 1000;
+            int hours = remainingTime / 3600;
+            int minutes = (remainingTime % 3600) / 60;
+            int seconds = remainingTime % 60;
+            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
+        } else {
+            nextScanTimeLab->setText("已禁用");
+        }
+        
+        // 每2秒更新一次内存使用率
+        updateCount++;
+        if (updateCount % 2 == 0) {
+            int memoryUsage = GetCurrentMemoryUsage();
+            memoryUsageLab->setText(QString("当前内存：%1%").arg(memoryUsage));
+        }
+    });
+    countdownTimer->start(1000); // 每秒更新一次
     
     // 连接自动内存清理设置的信号槽
     connect(enableAutoCleanCb, &QCheckBox::checkStateChanged, [=](Qt::CheckState state) {
@@ -505,24 +545,52 @@ void MainWindow::showSettingsWindow()
             // 启动定时器
             int intervalMinutes = appDatas.memoryCleanInterval();
             m_memoryCleanTimer->start(intervalMinutes * 60 * 1000);
+            // 更新倒计时显示
+            int totalSeconds = intervalMinutes * 60;
+            int hours = totalSeconds / 3600;
+            int minutes = (totalSeconds % 3600) / 60;
+            int seconds = totalSeconds % 60;
+            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
         } else {
             // 停止定时器
             m_memoryCleanTimer->stop();
+            // 更新倒计时显示
+            nextScanTimeLab->setText("已禁用");
         }
     });
     
-    // 连接检测间隔下拉框
+    // 当检测间隔改变时，更新倒计时显示
     connect(intervalCbx, &QComboBox::currentIndexChanged, [=](int index) {
-        // 5, 10, 15, 20, 25, 30分钟
-        int intervals[] = {5, 10, 15, 20, 25, 30};
+        // 1, 2, 5, 10, 15, 20, 25, 30分钟
+        int intervals[] = {1, 2, 5, 10, 15, 20, 25, 30};
         int newInterval = intervals[index];
         appDatas.setMemoryCleanInterval(newInterval);
         m_memoryCleanInterval = newInterval;
-        // 如果自动清理已启用，更新定时器
+        // 如果自动清理已启用，更新定时器和倒计时显示
         if (appDatas.isAutoMemoryCleanEnabled()) {
             m_memoryCleanTimer->start(newInterval * 60 * 1000);
+            int totalSeconds = newInterval * 60;
+            int hours = totalSeconds / 3600;
+            int minutes = (totalSeconds % 3600) / 60;
+            int seconds = totalSeconds % 60;
+            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
         }
     });
+    
+    // 初始化倒计时显示和当前内存使用率
+    if (m_isAutoMemoryCleanEnabled && m_memoryCleanTimer->isActive()) {
+        int remainingTime = m_memoryCleanTimer->remainingTime() / 1000;
+        int hours = remainingTime / 3600;
+        int minutes = (remainingTime % 3600) / 60;
+        int seconds = remainingTime % 60;
+        nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
+    } else {
+        nextScanTimeLab->setText("已禁用");
+    }
+    
+    // 初始化当前内存使用率显示
+    int initialMemoryUsage = GetCurrentMemoryUsage();
+    memoryUsageLab->setText(QString("当前内存：%1%").arg(initialMemoryUsage));
     
     // 连接内存阈值下拉框
     connect(thresholdCbx, &QComboBox::currentIndexChanged, [=](int index) {
@@ -552,6 +620,20 @@ void MainWindow::showSettingsWindow()
     memoryCleanLayout->addStretch();
     connect(memoryCleanBtn, &QPushButton::clicked, [=]() {
         PerformMemoryClean(settingsDlg);
+        
+        // 重置下次扫描时间
+        if (appDatas.isAutoMemoryCleanEnabled() && m_memoryCleanTimer->isActive()) {
+            int intervalMinutes = appDatas.memoryCleanInterval();
+            m_memoryCleanTimer->stop();
+            m_memoryCleanTimer->start(intervalMinutes * 60 * 1000);
+            
+            // 更新倒计时显示
+            int totalSeconds = intervalMinutes * 60;
+            int hours = totalSeconds / 3600;
+            int minutes = (totalSeconds % 3600) / 60;
+            int seconds = totalSeconds % 60;
+            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
+        }
     });
 
     // 连接备份和恢复按钮的信号槽

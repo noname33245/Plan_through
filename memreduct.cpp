@@ -1,5 +1,4 @@
 // 防止Windows.h与Qt的min/max宏冲突
-#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 
 // Qt核心头文件
@@ -14,8 +13,11 @@
 // Windows系统API头文件
 #include <windows.h>
 #include <psapi.h>
-#include <ntstatus.h>
+#include <shellapi.h>
 #include <stdio.h>
+
+// 定义NTSTATUS类型
+typedef LONG NTSTATUS;
 
 // 链接依赖库（仅MSVC支持）
 #ifdef _MSC_VER
@@ -148,8 +150,8 @@ static BOOL FullMemoryClean()
     HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
     if (!hNtdll) return FALSE;
 
-    PFN_NtSetSystemInformation pfnNtSetSystemInformation = reinterpret_cast<PFN_NtSetSystemInformation>(GetProcAddress(hNtdll, "NtSetSystemInformation"));
-    PFN_NtQuerySystemInformation pfnNtQuerySystemInformation = reinterpret_cast<PFN_NtQuerySystemInformation>(GetProcAddress(hNtdll, "NtQuerySystemInformation"));
+    PFN_NtSetSystemInformation pfnNtSetSystemInformation = (PFN_NtSetSystemInformation)GetProcAddress(hNtdll, "NtSetSystemInformation");
+    PFN_NtQuerySystemInformation pfnNtQuerySystemInformation = (PFN_NtQuerySystemInformation)GetProcAddress(hNtdll, "NtQuerySystemInformation");
     if (!pfnNtSetSystemInformation || !pfnNtQuerySystemInformation) return FALSE;
 
     // 1. 清理所有用户进程工作集（跳过系统关键进程、自身进程）
