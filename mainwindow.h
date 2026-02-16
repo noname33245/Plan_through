@@ -102,6 +102,9 @@ private slots:
     
     // 跳转到微软商店评分页面
     void goToMsStoreRate();
+    
+    // 检查内存使用情况并在需要时执行清理
+    void checkMemoryUsage();
 
 protected:
     // 窗口关闭事件处理
@@ -157,6 +160,12 @@ private:
     QWidget *m_resizeHandle = nullptr;
     bool m_isResizing = false;
     QPoint m_resizeStartPos;
+    
+    // 自动内存清理相关
+    QTimer *m_memoryCleanTimer = nullptr;
+    int m_memoryCleanInterval = 10; // 默认10分钟
+    int m_memoryCleanThreshold = 60; // 默认60%
+    bool m_isAutoMemoryCleanEnabled = false;
 };
 
 #endif

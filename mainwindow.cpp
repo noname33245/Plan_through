@@ -6,6 +6,9 @@
 #include "mainwindow.h"
 #include "appdatas.h"
 
+// 内存清理功能
+#include "memreduct.cpp"
+
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -53,6 +56,12 @@ MainWindow::MainWindow(QWidget *parent)
     if (appDatas.isAutoStartup()) {
         this->hide();
     }
+    
+    // 初始化自动内存清理定时器
+    m_memoryCleanTimer = new QTimer(this);
+    connect(m_memoryCleanTimer, &QTimer::timeout, this, &MainWindow::checkMemoryUsage);
+    // 初始状态下禁用定时器
+    m_memoryCleanTimer->stop();
 }
 
 // 析构函数，释放所有动态分配的资源
@@ -338,7 +347,7 @@ void MainWindow::showSettingsWindow()
 {
     QDialog *settingsDlg = new QDialog(this);
     settingsDlg->setWindowTitle("软件设置");
-    settingsDlg->setFixedSize(350, 300);
+    settingsDlg->setFixedSize(350, 450);
     settingsDlg->setModal(true);
     
     // 禁用所有可能的窗口动画效果
@@ -431,6 +440,76 @@ void MainWindow::showSettingsWindow()
     rateLayout->addStretch();
     connect(rateBtn, &QPushButton::clicked, this, &MainWindow::goToMsStoreRate);
 
+    // 自动内存清理设置
+    QGroupBox *autoMemoryCleanGroup = new QGroupBox("自动内存清理");
+    autoMemoryCleanGroup->setStyleSheet(
+        "QGroupBox{font-size:13px; font-weight:bold; color:#000000; margin-top:10px;}"
+        "QGroupBox::title{subcontrol-origin: margin; left: 10px; padding: 0 5px 0 5px;}"
+    );
+    QVBoxLayout *autoMemoryCleanLayout = new QVBoxLayout(autoMemoryCleanGroup);
+    
+    // 启用自动内存清理勾选框
+    QHBoxLayout *enableAutoCleanLayout = new QHBoxLayout;
+    QCheckBox *enableAutoCleanCb = new QCheckBox("启用自动内存清理");
+    enableAutoCleanLayout->addWidget(enableAutoCleanCb);
+    enableAutoCleanLayout->addStretch();
+    
+    // 检测间隔下拉框
+    QHBoxLayout *intervalLayout = new QHBoxLayout;
+    QLabel *intervalLab = new QLabel("检测间隔：");
+    QComboBox *intervalCbx = new QComboBox;
+    intervalCbx->addItems({"5分钟", "10分钟", "15分钟", "20分钟", "25分钟", "30分钟"});
+    intervalCbx->setCurrentIndex(1); // 默认10分钟
+    intervalLayout->addWidget(intervalLab);
+    intervalLayout->addWidget(intervalCbx);
+    intervalLayout->addStretch();
+    
+    // 内存阈值下拉框
+    QHBoxLayout *thresholdLayout = new QHBoxLayout;
+    QLabel *thresholdLab = new QLabel("内存阈值：");
+    QComboBox *thresholdCbx = new QComboBox;
+    thresholdCbx->addItems({"30%", "40%", "50%", "60%", "70%", "80%", "90%"});
+    thresholdCbx->setCurrentIndex(3); // 默认60%
+    thresholdLayout->addWidget(thresholdLab);
+    thresholdLayout->addWidget(thresholdCbx);
+    thresholdLayout->addStretch();
+    
+    // 添加到自动内存清理布局
+    autoMemoryCleanLayout->addLayout(enableAutoCleanLayout);
+    autoMemoryCleanLayout->addLayout(intervalLayout);
+    autoMemoryCleanLayout->addLayout(thresholdLayout);
+    
+    // 连接自动内存清理设置的信号槽
+    connect(enableAutoCleanCb, &QCheckBox::checkStateChanged, [=](Qt::CheckState state) {
+        m_isAutoMemoryCleanEnabled = (state == Qt::Checked);
+        if (m_isAutoMemoryCleanEnabled) {
+            // 启动定时器
+            int intervalMinutes = m_memoryCleanInterval;
+            m_memoryCleanTimer->start(intervalMinutes * 60 * 1000);
+        } else {
+            // 停止定时器
+            m_memoryCleanTimer->stop();
+        }
+    });
+    
+    // 连接检测间隔下拉框
+    connect(intervalCbx, &QComboBox::currentIndexChanged, [=](int index) {
+        // 5, 10, 15, 20, 25, 30分钟
+        int intervals[] = {5, 10, 15, 20, 25, 30};
+        m_memoryCleanInterval = intervals[index];
+        // 如果自动清理已启用，更新定时器
+        if (m_isAutoMemoryCleanEnabled) {
+            m_memoryCleanTimer->start(m_memoryCleanInterval * 60 * 1000);
+        }
+    });
+    
+    // 连接内存阈值下拉框
+    connect(thresholdCbx, &QComboBox::currentIndexChanged, [=](int index) {
+        // 30%, 40%, 50%, 60%, 70%, 80%, 90%
+        int thresholds[] = {30, 40, 50, 60, 70, 80, 90};
+        m_memoryCleanThreshold = thresholds[index];
+    });
+
     // 数据备份和恢复
     QHBoxLayout *backupLayout = new QHBoxLayout;
     QPushButton *createBackupBtn = new QPushButton("创建数据备份");
@@ -441,6 +520,16 @@ void MainWindow::showSettingsWindow()
     backupLayout->addWidget(createBackupBtn);
     backupLayout->addWidget(restoreBackupBtn);
     backupLayout->addStretch();
+
+    // 内存清理功能
+    QHBoxLayout *memoryCleanLayout = new QHBoxLayout;
+    QPushButton *memoryCleanBtn = new QPushButton("一键内存清理");
+    memoryCleanBtn->setStyleSheet("background-color:#E74C3C;");
+    memoryCleanLayout->addWidget(memoryCleanBtn);
+    memoryCleanLayout->addStretch();
+    connect(memoryCleanBtn, &QPushButton::clicked, [=]() {
+        PerformMemoryClean(settingsDlg);
+    });
 
     // 连接备份和恢复按钮的信号槽
     connect(createBackupBtn, &QPushButton::clicked, [=]() {
@@ -485,6 +574,8 @@ void MainWindow::showSettingsWindow()
     mainLayout->addLayout(pathLayout);
     mainLayout->addLayout(logLayout);
     mainLayout->addLayout(backupLayout);
+    mainLayout->addLayout(memoryCleanLayout);
+    mainLayout->addWidget(autoMemoryCleanGroup);
     mainLayout->addLayout(rateLayout);
     mainLayout->addStretch();
 
@@ -531,6 +622,15 @@ void MainWindow::openLogPath()
 void MainWindow::goToMsStoreRate()
 {
     QDesktopServices::openUrl(QUrl("https://apps.microsoft.com/detail/9P7X9B7RKXDB?hl=neutral&gl=CN&ocid=pdpshare"));
+}
+
+// 检查内存使用情况并在需要时执行清理
+void MainWindow::checkMemoryUsage()
+{
+    if (m_isAutoMemoryCleanEnabled) {
+        // 调用内存清理检测函数
+        CheckAndCleanMemory(m_memoryCleanThreshold);
+    }
 }
 
 // 窗口关闭事件处理
@@ -781,8 +881,7 @@ QString MainWindow::loadQss(int type)
     const QString path = QString(":/style%1.qss").arg(type);
     QFile file(path);
     //打开文件
-    file.open(QFile::ReadOnly);
-    if(!file.isOpen())
+    if(!file.open(QFile::ReadOnly))
     {
         qDebug()<<"Error in open "+path;
         return "";
