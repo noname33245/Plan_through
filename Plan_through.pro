@@ -13,6 +13,7 @@ CONFIG += c++17
 SOURCES += appdatas.cpp \
     main.cpp \
     mainwindow.cpp \
+    memreduct.cpp \
     utils/datehelper.cpp \
     utils/widgetcontainer.cpp \
     widgets/dayview.cpp \

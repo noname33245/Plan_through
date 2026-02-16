@@ -292,28 +292,18 @@ void PerformMemoryClean(QWidget *parentWidget)
     // 1. 权限校验
     if (!IsElevated())
     {
-        QMessageBox::StandardButton reply = QMessageBox::question(
-            parentWidget,
-            "权限不足",
-            "全量内存清理需要管理员权限，是否立即提权运行？",
-            QMessageBox::Yes | QMessageBox::No
-        );
-
-        if (reply == QMessageBox::Yes)
+        // 直接提权，不询问用户
+        // 提权重启，退出当前实例
+        if (RunElevated())
         {
-            // 提权重启，退出当前实例
-            if (RunElevated())
-            {
-                qApp->quit();
-                return;
-            }
-            else
-            {
-                QMessageBox::critical(parentWidget, "提权失败", "无法获取管理员权限，请手动右键以管理员身份运行程序！");
-                return;
-            }
+            qApp->quit();
+            return;
         }
-        return;
+        else
+        {
+            QMessageBox::critical(parentWidget, "提权失败", "无法获取管理员权限，请手动右键以管理员身份运行程序！");
+            return;
+        }
     }
 
     // 2. 直接执行内存清理，无需确认

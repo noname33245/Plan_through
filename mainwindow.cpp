@@ -60,8 +60,18 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化自动内存清理定时器
     m_memoryCleanTimer = new QTimer(this);
     connect(m_memoryCleanTimer, &QTimer::timeout, this, &MainWindow::checkMemoryUsage);
-    // 初始状态下禁用定时器
-    m_memoryCleanTimer->stop();
+    
+    // 从appdatas加载自动内存清理设置
+    m_isAutoMemoryCleanEnabled = appDatas.isAutoMemoryCleanEnabled();
+    m_memoryCleanInterval = appDatas.memoryCleanInterval();
+    m_memoryCleanThreshold = appDatas.memoryCleanThreshold();
+    
+    // 根据设置启动或停止定时器
+    if (m_isAutoMemoryCleanEnabled) {
+        m_memoryCleanTimer->start(m_memoryCleanInterval * 60 * 1000);
+    } else {
+        m_memoryCleanTimer->stop();
+    }
 }
 
 // 析构函数，释放所有动态分配的资源
@@ -451,6 +461,7 @@ void MainWindow::showSettingsWindow()
     // 启用自动内存清理勾选框
     QHBoxLayout *enableAutoCleanLayout = new QHBoxLayout;
     QCheckBox *enableAutoCleanCb = new QCheckBox("启用自动内存清理");
+    enableAutoCleanCb->setChecked(appDatas.isAutoMemoryCleanEnabled());
     enableAutoCleanLayout->addWidget(enableAutoCleanCb);
     enableAutoCleanLayout->addStretch();
     
@@ -459,7 +470,10 @@ void MainWindow::showSettingsWindow()
     QLabel *intervalLab = new QLabel("检测间隔：");
     QComboBox *intervalCbx = new QComboBox;
     intervalCbx->addItems({"5分钟", "10分钟", "15分钟", "20分钟", "25分钟", "30分钟"});
-    intervalCbx->setCurrentIndex(1); // 默认10分钟
+    // 根据appdatas中的设置初始化
+    int interval = appDatas.memoryCleanInterval();
+    int intervalIndex = qMax(0, qMin(5, (interval / 5) - 1));
+    intervalCbx->setCurrentIndex(intervalIndex);
     intervalLayout->addWidget(intervalLab);
     intervalLayout->addWidget(intervalCbx);
     intervalLayout->addStretch();
@@ -469,7 +483,10 @@ void MainWindow::showSettingsWindow()
     QLabel *thresholdLab = new QLabel("内存阈值：");
     QComboBox *thresholdCbx = new QComboBox;
     thresholdCbx->addItems({"30%", "40%", "50%", "60%", "70%", "80%", "90%"});
-    thresholdCbx->setCurrentIndex(3); // 默认60%
+    // 根据appdatas中的设置初始化
+    int threshold = appDatas.memoryCleanThreshold();
+    int thresholdIndex = qMax(0, qMin(6, (threshold / 10) - 3));
+    thresholdCbx->setCurrentIndex(thresholdIndex);
     thresholdLayout->addWidget(thresholdLab);
     thresholdLayout->addWidget(thresholdCbx);
     thresholdLayout->addStretch();
@@ -481,10 +498,12 @@ void MainWindow::showSettingsWindow()
     
     // 连接自动内存清理设置的信号槽
     connect(enableAutoCleanCb, &QCheckBox::checkStateChanged, [=](Qt::CheckState state) {
-        m_isAutoMemoryCleanEnabled = (state == Qt::Checked);
-        if (m_isAutoMemoryCleanEnabled) {
+        bool enabled = (state == Qt::Checked);
+        appDatas.setAutoMemoryCleanEnabled(enabled);
+        m_isAutoMemoryCleanEnabled = enabled;
+        if (enabled) {
             // 启动定时器
-            int intervalMinutes = m_memoryCleanInterval;
+            int intervalMinutes = appDatas.memoryCleanInterval();
             m_memoryCleanTimer->start(intervalMinutes * 60 * 1000);
         } else {
             // 停止定时器
@@ -496,10 +515,12 @@ void MainWindow::showSettingsWindow()
     connect(intervalCbx, &QComboBox::currentIndexChanged, [=](int index) {
         // 5, 10, 15, 20, 25, 30分钟
         int intervals[] = {5, 10, 15, 20, 25, 30};
-        m_memoryCleanInterval = intervals[index];
+        int newInterval = intervals[index];
+        appDatas.setMemoryCleanInterval(newInterval);
+        m_memoryCleanInterval = newInterval;
         // 如果自动清理已启用，更新定时器
-        if (m_isAutoMemoryCleanEnabled) {
-            m_memoryCleanTimer->start(m_memoryCleanInterval * 60 * 1000);
+        if (appDatas.isAutoMemoryCleanEnabled()) {
+            m_memoryCleanTimer->start(newInterval * 60 * 1000);
         }
     });
     
@@ -507,7 +528,9 @@ void MainWindow::showSettingsWindow()
     connect(thresholdCbx, &QComboBox::currentIndexChanged, [=](int index) {
         // 30%, 40%, 50%, 60%, 70%, 80%, 90%
         int thresholds[] = {30, 40, 50, 60, 70, 80, 90};
-        m_memoryCleanThreshold = thresholds[index];
+        int newThreshold = thresholds[index];
+        appDatas.setMemoryCleanThreshold(newThreshold);
+        m_memoryCleanThreshold = newThreshold;
     });
 
     // 数据备份和恢复

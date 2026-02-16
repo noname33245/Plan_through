@@ -73,6 +73,30 @@ public:
     // 参数1：是否启用自动清理
     void setAutoCleanMemoryEnabled(bool enabled){m_isAutoCleanMemoryEnabled = enabled;}
     
+    // 设置自动内存清理间隔
+    // 参数1：清理间隔（分钟）
+    void setMemoryCleanInterval(int interval){m_memoryCleanInterval = interval;}
+    
+    // 设置自动内存清理阈值
+    // 参数1：内存阈值百分比
+    void setMemoryCleanThreshold(int threshold){m_memoryCleanThreshold = threshold;}
+    
+    // 设置是否启用自动内存清理
+    // 参数1：是否启用自动清理
+    void setAutoMemoryCleanEnabled(bool enabled){m_isAutoMemoryCleanEnabled = enabled;}
+    
+    // 获取自动内存清理间隔
+    // 返回：清理间隔（分钟）
+    int memoryCleanInterval(){return m_memoryCleanInterval;}
+    
+    // 获取自动内存清理阈值
+    // 返回：内存阈值百分比
+    int memoryCleanThreshold(){return m_memoryCleanThreshold;}
+    
+    // 获取是否启用自动内存清理
+    // 返回：是否启用自动清理
+    bool isAutoMemoryCleanEnabled(){return m_isAutoMemoryCleanEnabled;}
+    
     // 设置最大连续天数
     // 参数1：最大连续天数
     void setMaxContinDays(int continDays){m_maxContinuousDays = continDays;}
@@ -195,6 +219,11 @@ private:
     // 自动清理内存相关设置
     bool m_isAutoCleanMemoryEnabled = true; // 默认启用自动清理
     int m_autoCleanMemoryThreshold = 80; // 默认内存使用率超过80%时清理
+    
+    // 自动内存清理相关设置
+    bool m_isAutoMemoryCleanEnabled = false; // 默认禁用自动内存清理
+    int m_memoryCleanInterval = 10; // 默认10分钟
+    int m_memoryCleanThreshold = 60; // 默认60%
     
     // 默认视图设置
     int m_defaultViewType = 0; // 0: 月视图, 1: 日视图

@@ -582,7 +582,8 @@ void AppDatas::loadDataFromFile()
 void AppDatas::initSettings()
 {
     m_isAutoStartup = m_appSettings->value("auto_startup", false).toBool();
-    setAutoStartup(m_isAutoStartup);
+    // 不要在初始化时调用setAutoStartup，避免覆盖注册表中的路径
+    // setAutoStartup(m_isAutoStartup);
 
     m_isMinToTray = m_appSettings->value("min_to_tray", false).toBool();
     m_themeType = m_appSettings->value("theme", 0).toInt();
@@ -590,6 +591,11 @@ void AppDatas::initSettings()
     // 加载自动清理内存设置
     m_isAutoCleanMemoryEnabled = m_appSettings->value("auto_clean_memory_enabled", true).toBool();
     m_autoCleanMemoryThreshold = m_appSettings->value("auto_clean_memory_threshold", 80).toInt();
+    
+    // 加载自动内存清理设置
+    m_isAutoMemoryCleanEnabled = m_appSettings->value("auto_memory_clean_enabled", false).toBool();
+    m_memoryCleanInterval = m_appSettings->value("memory_clean_interval", 10).toInt();
+    m_memoryCleanThreshold = m_appSettings->value("memory_clean_threshold", 60).toInt();
     
     // 加载默认视图设置
     m_defaultViewType = m_appSettings->value("default_view_type", 0).toInt();
@@ -606,6 +612,11 @@ void AppDatas::saveSettings()
     m_appSettings->setValue("auto_clean_memory_enabled", m_isAutoCleanMemoryEnabled);
     m_appSettings->setValue("auto_clean_memory_threshold", m_autoCleanMemoryThreshold);
     
+    // 保存自动内存清理设置
+    m_appSettings->setValue("auto_memory_clean_enabled", m_isAutoMemoryCleanEnabled);
+    m_appSettings->setValue("memory_clean_interval", m_memoryCleanInterval);
+    m_appSettings->setValue("memory_clean_threshold", m_memoryCleanThreshold);
+    
     // 保存默认视图设置
     m_appSettings->setValue("default_view_type", m_defaultViewType);
     
@@ -621,12 +632,29 @@ void AppDatas::setAutoStartup(bool isAuto)
     // 使用注册表方式设置开机自启
     QSettings reg("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
     if(isAuto) {
-        QString executablePath = QApplication::applicationFilePath().replace("/", "\\");
+        // 获取当前正在运行的可执行文件的完整路径
+        QString executablePath = QApplication::applicationFilePath();
+        // 替换路径分隔符为Windows格式
+        executablePath = executablePath.replace("/", "\\");
+        // 确保路径包含在引号中，以处理路径中的空格
+        if (!executablePath.startsWith('"') && !executablePath.endsWith('"')) {
+            executablePath = '"' + executablePath + '"';
+        }
+        // 写入注册表
         reg.setValue("PlanThrough", executablePath);
         qDebug() << "已设置开机自启：" << executablePath;
+        qDebug() << "注册表写入状态：" << (reg.status() == QSettings::NoError ? "成功" : "失败");
+        // 验证写入是否成功
+        QString writtenValue = reg.value("PlanThrough").toString();
+        qDebug() << "注册表中实际写入的值：" << writtenValue;
     } else {
+        // 移除开机自启项
         reg.remove("PlanThrough");
         qDebug() << "已取消开机自启";
+        qDebug() << "注册表删除状态：" << (reg.status() == QSettings::NoError ? "成功" : "失败");
+        // 验证删除是否成功
+        QString remainingValue = reg.value("PlanThrough").toString();
+        qDebug() << "注册表中剩余的值：" << remainingValue;
     }
 }
 
