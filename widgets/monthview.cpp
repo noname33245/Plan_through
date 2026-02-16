@@ -77,7 +77,7 @@ MonthView::MonthView(QWidget *parent)
         studyHoursLayout->addWidget(new QLabel("总学习时长："), 1, 0, 1, 1, Qt::AlignRight);
         studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getTotalStudyHours()) + " 小时"), 1, 1, 1, 1, Qt::AlignLeft);
         studyHoursLayout->addWidget(new QLabel("平均每天学习时长："), 2, 0, 1, 1, Qt::AlignRight);
-        studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getAverageStudyHoursPerDay(), 'f', 1) + " 小时"), 2, 1, 1, 1, Qt::AlignLeft);
+        studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getAverageStudyHoursPerDay(), 'f', 1) + " 小时（仅统计当日有学习记录的天数）"), 2, 1, 1, 1, Qt::AlignLeft);
         studyHoursLayout->addWidget(new QLabel("完成项目数："), 3, 0, 1, 1, Qt::AlignRight);
         studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getCompletedProjects()) + " 个"), 3, 1, 1, 1, Qt::AlignLeft);
         studyHoursLayout->addWidget(new QLabel("最大连续学习天数："), 4, 0, 1, 1, Qt::AlignRight);
@@ -214,6 +214,9 @@ void MonthView::generateMonthCalendar()
     int row = 1;
     int col = startWeek;
 
+    // 获取当前日期
+    QDate today = QDate::currentDate();
+    
     // 生成日期标签
     for (int day = 1; day <= daysInMonth; ++day) {
         QDate currentDate(year, month, day);
@@ -224,8 +227,14 @@ void MonthView::generateMonthCalendar()
         dayLabel->setFixedSize(48, 48);  // 日历单元格尺寸紧凑压缩
         dayLabel->setCursor(Qt::PointingHandCursor); // 设置鼠标指针为手型
         
-        // 根据学习时长设置不同的背景色
-        if (data.studyHours == 0) {
+        // 检查是否为当天日期
+        bool isToday = (currentDate == today);
+        
+        // 根据学习时长和是否为当天日期设置不同的背景色
+        if (isToday) {
+            // 当天日期的特殊样式
+            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #FF6B6B,stop:1 #EE5A24);color:white;border-radius:8px;font-size:12px;font-weight:bold;border:2px solid #FFD700;");
+        } else if (data.studyHours == 0) {
             dayLabel->setStyleSheet("background-color:#FFFFFF;border:1px solid #F0F0F0;border-radius:8px;font-size:11px;color:#909399;");
         } else if (data.studyHours >= appDatas.targetHour()) {
             dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #27AE60,stop:1 #219653);color:white;border-radius:8px;font-size:11px;font-weight:bold;");
