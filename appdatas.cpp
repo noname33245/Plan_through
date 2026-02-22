@@ -1,4 +1,6 @@
 #include "appdatas.h"
+#include <Windows.h>
+#include <shellapi.h>
 
 AppDatas appDatas;
 
@@ -623,11 +625,63 @@ void AppDatas::saveSettings()
     m_appSettings->sync();
 }
 
+// 检查是否拥有管理员权限
+static BOOL IsElevated()
+{
+    BOOL bRet = FALSE;
+    HANDLE hToken = NULL;
+
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+    {
+        TOKEN_ELEVATION Elevation;
+        DWORD cbSize = sizeof(TOKEN_ELEVATION);
+
+        if (GetTokenInformation(hToken, TokenElevation, &Elevation, cbSize, &cbSize))
+        {
+            bRet = Elevation.TokenIsElevated;
+        }
+        CloseHandle(hToken);
+    }
+    return bRet;
+}
+
+// 自动UAC提权重启程序
+static BOOL RunElevated()
+{
+    QString appPath = QApplication::applicationFilePath();
+    SHELLEXECUTEINFOW sei;
+    ZeroMemory(&sei, sizeof(SHELLEXECUTEINFOW));
+
+    sei.cbSize = sizeof(SHELLEXECUTEINFOW);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.hwnd = NULL;
+    sei.lpVerb = L"runas";
+    sei.lpFile = appPath.toStdWString().c_str();
+    sei.lpParameters = NULL;
+    sei.lpDirectory = NULL;
+    sei.nShow = SW_NORMAL;
+
+    return ShellExecuteExW(&sei);
+}
+
 // 设置是否自动启动
 // 参数1：是否自动启动
 void AppDatas::setAutoStartup(bool isAuto)
 {
     m_isAutoStartup = isAuto;
+    
+    // 检查是否有管理员权限
+    if (!IsElevated()) {
+        qDebug() << "No administrator privileges, attempting to elevate...";
+        // 尝试提权
+        if (RunElevated()) {
+            qDebug() << "Elevation successful, auto-startup setting will continue in elevated process";
+            return;
+        } else {
+            qDebug() << "Elevation failed, cannot set auto-startup without administrator privileges";
+            return;
+        }
+    }
     
     // 使用注册表方式设置开机自启
     QSettings reg("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
@@ -983,4 +1037,24 @@ QMap<QDate, DateStudyData> AppDatas::getRecentStudyData(int days) const
     }
     
     return recentData;
+}
+
+// 获取指定月份的总学习时长
+// 参数1：年份
+// 参数2：月份
+// 返回：总学习时长（小时）
+int AppDatas::getMonthStudyHours(int year, int month) const
+{
+    int totalHours = 0;
+    QDate firstDay(year, month, 1);
+    int daysInMonth = firstDay.daysInMonth();
+    
+    for (int day = 1; day <= daysInMonth; ++day) {
+        QDate currentDate(year, month, day);
+        if (m_studyDataMap.contains(currentDate)) {
+            totalHours += m_studyDataMap[currentDate].studyHours;
+        }
+    }
+    
+    return totalHours;
 }

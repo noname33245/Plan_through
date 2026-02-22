@@ -150,7 +150,10 @@ MonthView::MonthView(QWidget *parent)
     pageLayout->addLayout(monthLayout);
 
     // 日历主体
-    QGroupBox* calendarGroup = new QGroupBox("📅 月度学习记录");
+    int currentYear = DateHelper::currentYear();
+    int currentMonth = DateHelper::currentMonth();
+    int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
+    QGroupBox* calendarGroup = new QGroupBox(QString("📅 月度学习记录                 当月总学习时长: %1小时").arg(monthStudyHours));
     calendarGroup->setObjectName("calendarGroup");
     m_monthCalendarLayout = new QGridLayout(calendarGroup);
     m_monthCalendarLayout->setSpacing(4);  // 日历单元格间距极致紧凑
@@ -179,6 +182,15 @@ void MonthView::switchMonth(int offset)
     DateHelper::addCaleMonth(offset);
     m_monthTitleLabel->setText(QString("%1年%2月").arg(DateHelper::caleYear()).arg(DateHelper::caleMonth()));
     generateMonthCalendar();
+    
+    // 更新月度学习记录组框标题
+    QGroupBox* calendarGroup = findChild<QGroupBox*>("calendarGroup");
+    if (calendarGroup) {
+        int currentYear = DateHelper::caleYear();
+        int currentMonth = DateHelper::caleMonth();
+        int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
+        calendarGroup->setTitle(QString("📅 月度学习记录 (当月总学习时长: %1小时)").arg(monthStudyHours));
+    }
 }
 
 // 生成月历
@@ -262,6 +274,15 @@ void MonthView::setToCurrentMonth()
     DateHelper::resetDate();
     m_monthTitleLabel->setText(QString("%1年%2月").arg(DateHelper::currentYear()).arg(DateHelper::currentMonth()));
     generateMonthCalendar();
+    
+    // 更新月度学习记录组框标题
+    QGroupBox* calendarGroup = findChild<QGroupBox*>("calendarGroup");
+    if (calendarGroup) {
+        int currentYear = DateHelper::currentYear();
+        int currentMonth = DateHelper::currentMonth();
+        int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
+        calendarGroup->setTitle(QString("📅 月度学习记录 (当月总学习时长: %1小时)").arg(monthStudyHours));
+    }
 }
 
 // 事件过滤器，用于处理日期标签的点击事件

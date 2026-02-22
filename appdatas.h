@@ -200,6 +200,12 @@ public:
     // 参数1：天数
     // 返回：最近N天的学习数据，键为日期，值为学习数据
     QMap<QDate, DateStudyData> getRecentStudyData(int days) const;
+    
+    // 获取指定月份的总学习时长
+    // 参数1：年份
+    // 参数2：月份
+    // 返回：总学习时长（小时）
+    int getMonthStudyHours(int year, int month) const;
 
 private:
     QString m_appDataPath;

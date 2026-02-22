@@ -1,8 +1,66 @@
 #include "service.h"
 #include <QDebug>
+#include <QCoreApplication>
+#include <Windows.h>
+#include <shellapi.h>
+
+// 检查是否拥有管理员权限
+static BOOL IsElevated()
+{
+    BOOL bRet = FALSE;
+    HANDLE hToken = NULL;
+
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+    {
+        TOKEN_ELEVATION Elevation;
+        DWORD cbSize = sizeof(TOKEN_ELEVATION);
+
+        if (GetTokenInformation(hToken, TokenElevation, &Elevation, cbSize, &cbSize))
+        {
+            bRet = Elevation.TokenIsElevated;
+        }
+        CloseHandle(hToken);
+    }
+    return bRet;
+}
+
+// 自动UAC提权重启程序
+static BOOL RunElevated()
+{
+    QString appPath = QCoreApplication::applicationFilePath();
+    SHELLEXECUTEINFOW sei;
+    ZeroMemory(&sei, sizeof(SHELLEXECUTEINFOW));
+
+    sei.cbSize = sizeof(SHELLEXECUTEINFOW);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.hwnd = NULL;
+    sei.lpVerb = L"runas";
+    sei.lpFile = appPath.toStdWString().c_str();
+    sei.lpParameters = NULL;
+    sei.lpDirectory = NULL;
+    sei.nShow = SW_NORMAL;
+
+    return ShellExecuteExW(&sei);
+}
 
 bool ServiceManager::installService(const QString& serviceName, const QString& displayName, const QString& executablePath)
 {
+    // 检查是否有管理员权限
+    if (!IsElevated()) {
+        qDebug() << "No administrator privileges, attempting to elevate...";
+        // 尝试提权
+        if (RunElevated()) {
+            qDebug() << "Elevation successful, service installation will continue in elevated process";
+            return true;
+        } else {
+            qDebug() << "Elevation failed, cannot install service without administrator privileges";
+            return false;
+        }
+    }
+
+    // 构建带参数的可执行路径
+    QString serviceExecutablePath = executablePath + " --service";
+    
     SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
     if (schSCManager == NULL) {
         qDebug() << "OpenSCManager failed with error:" << GetLastError();
@@ -17,7 +75,7 @@ bool ServiceManager::installService(const QString& serviceName, const QString& d
         SERVICE_WIN32_OWN_PROCESS,
         SERVICE_AUTO_START,
         SERVICE_ERROR_NORMAL,
-        (LPCWSTR)executablePath.utf16(),
+        (LPCWSTR)serviceExecutablePath.utf16(),
         NULL,
         NULL,
         NULL,
@@ -39,6 +97,19 @@ bool ServiceManager::installService(const QString& serviceName, const QString& d
 
 bool ServiceManager::uninstallService(const QString& serviceName)
 {
+    // 检查是否有管理员权限
+    if (!IsElevated()) {
+        qDebug() << "No administrator privileges, attempting to elevate...";
+        // 尝试提权
+        if (RunElevated()) {
+            qDebug() << "Elevation successful, service uninstallation will continue in elevated process";
+            return true;
+        } else {
+            qDebug() << "Elevation failed, cannot uninstall service without administrator privileges";
+            return false;
+        }
+    }
+
     SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
     if (schSCManager == NULL) {
         qDebug() << "OpenSCManager failed with error:" << GetLastError();
@@ -89,6 +160,19 @@ bool ServiceManager::uninstallService(const QString& serviceName)
 
 bool ServiceManager::startService(const QString& serviceName)
 {
+    // 检查是否有管理员权限
+    if (!IsElevated()) {
+        qDebug() << "No administrator privileges, attempting to elevate...";
+        // 尝试提权
+        if (RunElevated()) {
+            qDebug() << "Elevation successful, service start will continue in elevated process";
+            return true;
+        } else {
+            qDebug() << "Elevation failed, cannot start service without administrator privileges";
+            return false;
+        }
+    }
+
     SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
     if (schSCManager == NULL) {
         qDebug() << "OpenSCManager failed with error:" << GetLastError();
@@ -117,6 +201,19 @@ bool ServiceManager::startService(const QString& serviceName)
 
 bool ServiceManager::stopService(const QString& serviceName)
 {
+    // 检查是否有管理员权限
+    if (!IsElevated()) {
+        qDebug() << "No administrator privileges, attempting to elevate...";
+        // 尝试提权
+        if (RunElevated()) {
+            qDebug() << "Elevation successful, service stop will continue in elevated process";
+            return true;
+        } else {
+            qDebug() << "Elevation failed, cannot stop service without administrator privileges";
+            return false;
+        }
+    }
+
     SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
     if (schSCManager == NULL) {
         qDebug() << "OpenSCManager failed with error:" << GetLastError();
@@ -162,6 +259,19 @@ bool ServiceManager::stopService(const QString& serviceName)
 
 bool ServiceManager::isServiceInstalled(const QString& serviceName)
 {
+    // 检查是否有管理员权限
+    if (!IsElevated()) {
+        qDebug() << "No administrator privileges, attempting to elevate...";
+        // 尝试提权
+        if (RunElevated()) {
+            qDebug() << "Elevation successful, service status check will continue in elevated process";
+            return true;
+        } else {
+            qDebug() << "Elevation failed, cannot check service status without administrator privileges";
+            return false;
+        }
+    }
+
     SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
     if (schSCManager == NULL) {
         qDebug() << "OpenSCManager failed with error:" << GetLastError();
@@ -181,6 +291,19 @@ bool ServiceManager::isServiceInstalled(const QString& serviceName)
 
 bool ServiceManager::isServiceRunning(const QString& serviceName)
 {
+    // 检查是否有管理员权限
+    if (!IsElevated()) {
+        qDebug() << "No administrator privileges, attempting to elevate...";
+        // 尝试提权
+        if (RunElevated()) {
+            qDebug() << "Elevation successful, service status check will continue in elevated process";
+            return true;
+        } else {
+            qDebug() << "Elevation failed, cannot check service status without administrator privileges";
+            return false;
+        }
+    }
+
     SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
     if (schSCManager == NULL) {
         qDebug() << "OpenSCManager failed with error:" << GetLastError();
