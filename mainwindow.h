@@ -67,6 +67,9 @@ public:
     
     // 从系统托盘显示窗口
     void showWindowFromTray();
+    
+    // 显示内存清理失败提示
+    void showMemoryCleanError();
 
 private slots:
     // 切换到日视图
@@ -102,6 +105,9 @@ private slots:
     
     // 跳转到微软商店评分页面
     void goToMsStoreRate();
+    
+    // 跳转到GitHub发布页面
+    void goToGithubReleases();
     
     // 检查内存使用情况并在需要时执行清理
     void checkMemoryUsage();

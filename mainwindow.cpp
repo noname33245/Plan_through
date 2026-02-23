@@ -7,7 +7,7 @@
 #include "appdatas.h"
 
 // 内存清理功能
-#include "memreduct.cpp"
+#include "memreduct.h"
 
 
 
@@ -442,13 +442,31 @@ void MainWindow::showSettingsWindow()
     logLayout->addStretch();
     connect(logBtn, &QPushButton::clicked, this, &MainWindow::openLogPath);
 
-    // 微软商店评分
-    QHBoxLayout *rateLayout = new QHBoxLayout;
+    // 微软商店评分和GitHub下载
+    QVBoxLayout *rateLayout = new QVBoxLayout;
+    
+    // 按钮布局
+    QHBoxLayout *buttonsLayout = new QHBoxLayout;
     QPushButton *rateBtn = new QPushButton("微软商店好评支持一下吧 ❤️");
     rateBtn->setStyleSheet("background-color:#27AE60;");
-    rateLayout->addWidget(rateBtn);
-    rateLayout->addStretch();
+    buttonsLayout->addWidget(rateBtn);
+    
+    QPushButton *githubBtn = new QPushButton("GitHub 下载页面");
+    githubBtn->setStyleSheet("background-color:#3498DB;");
+    buttonsLayout->addWidget(githubBtn);
+    buttonsLayout->addStretch();
+    
+    // 说明文字
+    QLabel *downloadNoteLabel = new QLabel("如果微软商城下载的版本无法使用内存清理功能，请先尝试使用管理员打开，如果失败则从github下载软件包");
+    downloadNoteLabel->setStyleSheet("font-size:10px; color:#666666;");
+    downloadNoteLabel->setWordWrap(true);
+    
+    // 添加到布局
+    rateLayout->addLayout(buttonsLayout);
+    rateLayout->addWidget(downloadNoteLabel);
+    
     connect(rateBtn, &QPushButton::clicked, this, &MainWindow::goToMsStoreRate);
+    connect(githubBtn, &QPushButton::clicked, this, &MainWindow::goToGithubReleases);
 
     // 自动内存清理设置
     QGroupBox *autoMemoryCleanGroup = new QGroupBox("自动内存清理");
@@ -619,7 +637,7 @@ void MainWindow::showSettingsWindow()
     memoryCleanLayout->addWidget(memoryCleanBtn);
     memoryCleanLayout->addStretch();
     connect(memoryCleanBtn, &QPushButton::clicked, [=]() {
-        PerformMemoryClean(settingsDlg);
+        PerformMemoryClean(this);
         
         // 重置下次扫描时间
         if (appDatas.isAutoMemoryCleanEnabled() && m_memoryCleanTimer->isActive()) {
@@ -729,12 +747,74 @@ void MainWindow::goToMsStoreRate()
     QDesktopServices::openUrl(QUrl("https://apps.microsoft.com/detail/9P7X9B7RKXDB?hl=neutral&gl=CN&ocid=pdpshare"));
 }
 
+// 跳转到GitHub发布页面
+void MainWindow::goToGithubReleases()
+{
+    QDesktopServices::openUrl(QUrl("https://github.com/noname33245/Plan_through/releases"));
+}
+
 // 检查内存使用情况并在需要时执行清理
 void MainWindow::checkMemoryUsage()
 {
     if (m_isAutoMemoryCleanEnabled) {
         // 调用内存清理检测函数
         CheckAndCleanMemory(m_memoryCleanThreshold);
+    }
+}
+
+// 显示内存清理失败提示
+void MainWindow::showMemoryCleanError()
+{
+    // 查找设置窗口
+    QDialog *settingsDlg = nullptr;
+    QList<QDialog*> dialogs = findChildren<QDialog*>();
+    foreach (QDialog *dialog, dialogs) {
+        if (dialog->windowTitle() == "软件设置") {
+            settingsDlg = dialog;
+            break;
+        }
+    }
+    
+    if (settingsDlg) {
+        // 查找内存清理按钮
+        QPushButton *memoryCleanBtn = nullptr;
+        QList<QPushButton*> buttons = settingsDlg->findChildren<QPushButton*>();
+        foreach (QPushButton *button, buttons) {
+            if (button->text() == "一键内存清理") {
+                memoryCleanBtn = button;
+                break;
+            }
+        }
+        
+        if (memoryCleanBtn) {
+            // 查找按钮所在的布局
+            QLayout *layout = memoryCleanBtn->parentWidget()->layout();
+            if (layout) {
+                // 移除已有的失败提示标签
+                QList<QLabel*> existingLabels = memoryCleanBtn->parentWidget()->findChildren<QLabel*>();
+                foreach (QLabel *label, existingLabels) {
+                    if (label->objectName() == "memoryCleanErrorLabel") {
+                        layout->removeWidget(label);
+                        label->deleteLater();
+                        break;
+                    }
+                }
+                
+                // 创建失败提示标签
+                QLabel *errorLabel = new QLabel("失败，请使用管理员运行");
+                errorLabel->setObjectName("memoryCleanErrorLabel");
+                errorLabel->setStyleSheet("color: red; font-weight: bold;");
+                
+                // 添加到布局中，放在按钮旁边
+                layout->addWidget(errorLabel);
+                
+                // 5秒后隐藏提示
+                QTimer::singleShot(5000, errorLabel, [=]() {
+                    layout->removeWidget(errorLabel);
+                    errorLabel->deleteLater();
+                });
+            }
+        }
     }
 }
 

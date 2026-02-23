@@ -18,18 +18,17 @@ SOURCES += appdatas.cpp \
     utils/widgetcontainer.cpp \
     widgets/dayview.cpp \
     widgets/monthview.cpp \
-    widgets/timeaxis.cpp \
-    windowservice/service.cpp
+    widgets/timeaxis.cpp
 
 HEADERS += appdatas.h \
     datastruct.h \
     mainwindow.h \
+    memreduct.h \
     utils/datehelper.h \
     utils/widgetcontainer.h \
     widgets/dayview.h \
     widgets/monthview.h \
-    widgets/timeaxis.h \
-    windowservice/service.h
+    widgets/timeaxis.h
 
 FORMS += \
     mainwindow.ui
@@ -45,12 +44,13 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 RC_ICONS = app.ico
 
-# 请求管理员权限
+# 使用普通用户权限
 CONFIG(debug, debug|release) {
     win32-g++: RC_FILE += app-debug.rc
 } else {
     win32-g++: RC_FILE += app.rc
 }
-win32-msvc: QMAKE_LFLAGS += /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'"
+win32-msvc: QMAKE_LFLAGS += /MANIFESTUAC:"level='asInvoker' uiAccess='false'"
+win32-g++: QMAKE_LFLAGS += -mwindows
 
 RESOURCES += res.qrc

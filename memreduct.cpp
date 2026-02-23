@@ -107,51 +107,15 @@ static BOOL IsElevated()
     return bRet;
 }
 
-// 自动UAC提权重启程序
-static BOOL RunElevated()
-{
-    QString appPath = QCoreApplication::applicationFilePath();
-    SHELLEXECUTEINFOW sei;
-    ZeroMemory(&sei, sizeof(SHELLEXECUTEINFOW));
-
-    sei.cbSize = sizeof(SHELLEXECUTEINFOW);
-    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
-    sei.hwnd = NULL;
-    sei.lpVerb = L"runas";
-    sei.lpFile = appPath.toStdWString().c_str();
-    sei.lpParameters = NULL;
-    sei.lpDirectory = NULL;
-    sei.nShow = SW_NORMAL;
-
-    return ShellExecuteExW(&sei);
-}
-
-// 获取系统内存实时状态
-static VOID GetMemoryInfo(PMEMORY_STATUS pMemStatus)
-{
-    MEMORYSTATUSEX msx;
-    ZeroMemory(&msx, sizeof(MEMORYSTATUSEX));
-    ZeroMemory(pMemStatus, sizeof(MEMORY_STATUS));
-
-    msx.dwLength = sizeof(MEMORYSTATUSEX);
-    if (GlobalMemoryStatusEx(&msx))
-    {
-        pMemStatus->PhysicalMemory.TotalBytes = msx.ullTotalPhys;
-        pMemStatus->PhysicalMemory.FreeBytes = msx.ullAvailPhys;
-        pMemStatus->PhysicalMemory.UsedBytes = msx.ullTotalPhys - msx.ullAvailPhys;
-        pMemStatus->PhysicalMemory.PercentUsed = msx.dwMemoryLoad;
-    }
-}
-
 // ===================== 核心全量内存清理函数 =====================
-static BOOL FullMemoryClean()
+BOOL FullMemoryClean()
 {
     // 加载ntdll.dll获取原生API地址
     HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
     if (!hNtdll) return FALSE;
 
-    PFN_NtSetSystemInformation pfnNtSetSystemInformation = (PFN_NtSetSystemInformation)GetProcAddress(hNtdll, "NtSetSystemInformation");
-    PFN_NtQuerySystemInformation pfnNtQuerySystemInformation = (PFN_NtQuerySystemInformation)GetProcAddress(hNtdll, "NtQuerySystemInformation");
+    PFN_NtSetSystemInformation pfnNtSetSystemInformation = reinterpret_cast<PFN_NtSetSystemInformation>(GetProcAddress(hNtdll, "NtSetSystemInformation"));
+    PFN_NtQuerySystemInformation pfnNtQuerySystemInformation = reinterpret_cast<PFN_NtQuerySystemInformation>(GetProcAddress(hNtdll, "NtQuerySystemInformation"));
     if (!pfnNtSetSystemInformation || !pfnNtQuerySystemInformation) return FALSE;
 
     // 1. 清理所有用户进程工作集（跳过系统关键进程、自身进程）
@@ -242,6 +206,8 @@ static BOOL FullMemoryClean()
     return TRUE;
 }
 
+
+
 // ===================== 内存状态检测函数 =====================
 // 检查当前内存使用情况，返回内存使用百分比
 static int GetMemoryUsagePercent()
@@ -285,55 +251,38 @@ static BOOL AutoMemoryCleanIfNeeded(int thresholdPercent)
 // ===================== 对外暴露的内存清理函数 =====================
 void PerformMemoryClean(QWidget *parentWidget)
 {
-    // 非Windows平台直接提示不支持
+    // 非Windows平台直接返回
 #ifndef Q_OS_WIN
-    QMessageBox::critical(parentWidget, "错误", "本功能仅支持Windows操作系统！");
     return;
 #endif
 
     // 1. 权限校验
     if (!IsElevated())
     {
-        // 直接提权，不询问用户
-        // 提权重启，退出当前实例
-        if (RunElevated())
+        // 没有管理员权限，直接显示失败提示
+        if (parentWidget)
         {
-            qApp->quit();
-            return;
+            // 发送自定义信号通知主窗口显示失败提示
+            QMetaObject::invokeMethod(parentWidget, "showMemoryCleanError", Qt::QueuedConnection);
         }
-        else
-        {
-            QMessageBox::critical(parentWidget, "提权失败", "无法获取管理员权限，请手动右键以管理员身份运行程序！");
-            return;
-        }
+        return;
     }
 
     // 2. 直接执行内存清理，无需确认
 
-    // 3. 记录清理前内存状态
-    MEMORY_STATUS memBefore;
-    ZeroMemory(&memBefore, sizeof(MEMORY_STATUS));
-    GetMemoryInfo(&memBefore);
-
-    // 4. 执行全量内存清理
+    // 3. 执行全量内存清理
     BOOL cleanResult = FullMemoryClean();
 
-    // 5. 记录清理后内存状态
-    MEMORY_STATUS memAfter;
-    ZeroMemory(&memAfter, sizeof(MEMORY_STATUS));
-    GetMemoryInfo(&memAfter);
-
-    // 6. 结果反馈
+    // 4. 结果反馈
     if (!cleanResult)
     {
-        QMessageBox::critical(parentWidget, "清理失败", "内存清理执行异常，无法获取系统原生API！");
+        // 清理失败，通知主窗口显示失败提示
+        if (parentWidget)
+        {
+            QMetaObject::invokeMethod(parentWidget, "showMemoryCleanError", Qt::QueuedConnection);
+        }
         return;
     }
-
-    // 计算释放的内存大小（仅用于内部计算，不显示）
-    // ULONGLONG freedMB = (memAfter.PhysicalMemory.FreeBytes - memBefore.PhysicalMemory.FreeBytes) / 1024 / 1024;
-    // double beforeFreeGB = (double)memBefore.PhysicalMemory.FreeBytes / 1024 / 1024 / 1024;
-    // double afterFreeGB = (double)memAfter.PhysicalMemory.FreeBytes / 1024 / 1024 / 1024;
 
     // 静默执行，不显示结果提示
 }

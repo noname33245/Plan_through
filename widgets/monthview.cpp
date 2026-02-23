@@ -189,7 +189,7 @@ void MonthView::switchMonth(int offset)
         int currentYear = DateHelper::caleYear();
         int currentMonth = DateHelper::caleMonth();
         int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
-        calendarGroup->setTitle(QString("📅 月度学习记录 (当月总学习时长: %1小时)").arg(monthStudyHours));
+        calendarGroup->setTitle(QString("📅 月度学习记录                 当月总学习时长: %1小时").arg(monthStudyHours));
     }
 }
 
@@ -281,7 +281,7 @@ void MonthView::setToCurrentMonth()
         int currentYear = DateHelper::currentYear();
         int currentMonth = DateHelper::currentMonth();
         int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
-        calendarGroup->setTitle(QString("📅 月度学习记录 (当月总学习时长: %1小时)").arg(monthStudyHours));
+        calendarGroup->setTitle(QString("📅 月度学习记录                 当月总学习时长: %1小时").arg(monthStudyHours));
     }
 }
 
