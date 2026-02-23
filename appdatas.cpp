@@ -630,23 +630,27 @@ void AppDatas::setAutoStartup(bool isAuto)
 {
     m_isAutoStartup = isAuto;
     
-    // 使用注册表方式设置开机自启
-    QSettings registry("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
-    QString appName = "Plan Through";
+    QString taskName = "PlanThroughStartup";
     QString executablePath = QApplication::applicationFilePath();
     executablePath = executablePath.replace("/", "\\");
     
     if(isAuto) {
-        // 添加到开机自启
-        registry.setValue(appName, executablePath);
-        qDebug() << "添加到开机自启成功：" << executablePath;
-    } else {
-        // 从开机自启中移除
-        if (registry.contains(appName)) {
-            registry.remove(appName);
-            qDebug() << "从开机自启中移除成功";
+        // 使用任务计划程序添加开机自启
+        QString command = QString("schtasks /create /tn %1 /tr \"%2\" /sc onlogon /rl highest /f").arg(taskName).arg(executablePath);
+        int result = system(command.toLocal8Bit().constData());
+        if(result == 0) {
+            qDebug() << "添加到开机自启成功（任务计划程序）：" << executablePath;
         } else {
-            qDebug() << "开机自启中不存在该项";
+            qDebug() << "添加到开机自启失败（任务计划程序）";
+        }
+    } else {
+        // 使用任务计划程序移除开机自启
+        QString command = QString("schtasks /delete /tn %1 /f").arg(taskName);
+        int result = system(command.toLocal8Bit().constData());
+        if(result == 0) {
+            qDebug() << "从开机自启中移除成功（任务计划程序）";
+        } else {
+            qDebug() << "从开机自启中移除失败（任务计划程序）";
         }
     }
 }
