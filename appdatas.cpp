@@ -927,6 +927,29 @@ double AppDatas::getAverageStudyHoursPerDay() const
     return static_cast<double>(getTotalStudyHours()) / totalDays;
 }
 
+// 获取近一月平均每天学习时长（小时）
+// 返回：近一月平均每天学习时长
+double AppDatas::getRecentMonthAverageStudyHoursPerDay() const
+{
+    QMap<QDate, DateStudyData> recentData = getRecentStudyData(30);
+    int totalDays = 0;
+    int totalHours = 0;
+    
+    QMap<QDate, DateStudyData>::const_iterator it = recentData.constBegin();
+    while (it != recentData.constEnd()) {
+        if (it.value().studyHours > 0) {
+            totalDays++;
+            totalHours += it.value().studyHours;
+        }
+        ++it;
+    }
+    
+    if (totalDays == 0) {
+        return 0.0;
+    }
+    return static_cast<double>(totalHours) / totalDays;
+}
+
 // 获取总项目数
 // 返回：总项目数
 int AppDatas::getTotalProjects() const

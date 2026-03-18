@@ -183,6 +183,10 @@ public:
     // 返回：平均每天学习时长
     double getAverageStudyHoursPerDay() const;
     
+    // 获取近一月平均每天学习时长（小时）
+    // 返回：近一月平均每天学习时长
+    double getRecentMonthAverageStudyHoursPerDay() const;
+    
     // 获取总项目数
     // 返回：总项目数
     int getTotalProjects() const;

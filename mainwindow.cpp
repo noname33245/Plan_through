@@ -38,11 +38,6 @@ MainWindow::MainWindow(QWidget *parent)
         switchToDayView();
     }
 
-    // 强制窗口显示
-    this->showNormal();
-    this->raise();
-    this->activateWindow();
-
     // 设置窗口最小大小
     this->setMinimumSize(400, 500);
     
@@ -52,9 +47,11 @@ MainWindow::MainWindow(QWidget *parent)
     int y = (screenGeometry.height() - this->height()) / 2;
     this->move(x, y);
 
-    // 如果设置了开机自启，则隐藏窗口
-    if (appDatas.isAutoStartup()) {
-        this->hide();
+    // 如果不是开机自启，则显示窗口
+    if (!appDatas.isAutoStartup()) {
+        this->showNormal();
+        this->raise();
+        this->activateWindow();
     }
     
     // 初始化自动内存清理定时器
