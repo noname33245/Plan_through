@@ -3,7 +3,6 @@
 
 AppDatas appDatas;
 
-// 构造函数，初始化应用数据管理
 AppDatas::AppDatas() {
     m_appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/Plan_through";
     m_appSettings = new QSettings(m_appDataPath + "/app_settings.ini", QSettings::IniFormat);
@@ -18,7 +17,6 @@ AppDatas::AppDatas() {
     loadConfigFromFile();
 }
 
-// 析构函数，释放资源并保存数据
 AppDatas::~AppDatas(){
     saveDataToFile();
     saveConfigToFile();
@@ -30,7 +28,6 @@ AppDatas::~AppDatas(){
     }
 }
 
-// 初始化存档路径
 void AppDatas::initSavePath()
 {
     QDir dir(m_appDataPath);
@@ -57,7 +54,6 @@ void AppDatas::initSavePath()
     qDebug() << "当前日志目录：" << m_logDirectory;
 }
 
-// 初始化配置文件
 void AppDatas::initConfigFile()
 {
     QDir dir(m_appDataPath);
@@ -71,7 +67,6 @@ void AppDatas::initConfigFile()
     qDebug() << "当前配置文件存档路径：" << m_configFilePath;
 }
 
-// 保存配置到文件
 void AppDatas::saveConfigToFile()
 {
     QJsonObject rootObj;
@@ -635,8 +630,8 @@ void AppDatas::setAutoStartup(bool isAuto)
     executablePath = executablePath.replace("/", "\\");
     
     if(isAuto) {
-        // 使用任务计划程序添加开机自启
-        QString command = QString("schtasks /create /tn %1 /tr \"%2\" /sc onlogon /rl highest /f").arg(taskName).arg(executablePath);
+        // 使用任务计划程序添加开机自启，添加--autostart参数
+        QString command = QString("schtasks /create /tn %1 /tr \"%2 --autostart\" /sc onlogon /rl highest /f").arg(taskName).arg(executablePath);
         int result = system(command.toLocal8Bit().constData());
         if(result == 0) {
             qDebug() << "添加到开机自启成功（任务计划程序）：" << executablePath;
@@ -888,8 +883,6 @@ bool AppDatas::restoreFromBackup(const QString& backupPath)
     return true;
 }
 
-// 获取总学习天数（仅统计有学习记录的天数）
-// 返回：总学习天数
 int AppDatas::getTotalStudyDays() const
 {
     int totalDays = 0;
@@ -903,8 +896,6 @@ int AppDatas::getTotalStudyDays() const
     return totalDays;
 }
 
-// 获取总学习时长（小时）
-// 返回：总学习时长
 int AppDatas::getTotalStudyHours() const
 {
     int totalHours = 0;
@@ -916,8 +907,6 @@ int AppDatas::getTotalStudyHours() const
     return totalHours;
 }
 
-// 获取平均每天学习时长（小时）
-// 返回：平均每天学习时长
 double AppDatas::getAverageStudyHoursPerDay() const
 {
     int totalDays = getTotalStudyDays();
@@ -927,8 +916,6 @@ double AppDatas::getAverageStudyHoursPerDay() const
     return static_cast<double>(getTotalStudyHours()) / totalDays;
 }
 
-// 获取近一月平均每天学习时长（小时）
-// 返回：近一月平均每天学习时长
 double AppDatas::getRecentMonthAverageStudyHoursPerDay() const
 {
     QMap<QDate, DateStudyData> recentData = getRecentStudyData(30);
@@ -950,8 +937,6 @@ double AppDatas::getRecentMonthAverageStudyHoursPerDay() const
     return static_cast<double>(totalHours) / totalDays;
 }
 
-// 获取总项目数
-// 返回：总项目数
 int AppDatas::getTotalProjects() const
 {
     int totalProjects = 0;
@@ -963,8 +948,6 @@ int AppDatas::getTotalProjects() const
     return totalProjects;
 }
 
-// 获取完成项目数
-// 返回：完成项目数
 int AppDatas::getCompletedProjects() const
 {
     int completedProjects = 0;
@@ -976,8 +959,6 @@ int AppDatas::getCompletedProjects() const
     return completedProjects;
 }
 
-// 获取项目完成率（百分比）
-// 返回：项目完成率
 double AppDatas::getProjectCompletionRate() const
 {
     int totalProjects = getTotalProjects();
@@ -987,9 +968,6 @@ double AppDatas::getProjectCompletionRate() const
     return static_cast<double>(getCompletedProjects()) / totalProjects * 100.0;
 }
 
-// 获取最近N天的学习数据
-// 参数1：天数
-// 返回：最近N天的学习数据，键为日期，值为学习数据
 QMap<QDate, DateStudyData> AppDatas::getRecentStudyData(int days) const
 {
     QMap<QDate, DateStudyData> recentData;
@@ -1005,10 +983,6 @@ QMap<QDate, DateStudyData> AppDatas::getRecentStudyData(int days) const
     return recentData;
 }
 
-// 获取指定月份的总学习时长
-// 参数1：年份
-// 参数2：月份
-// 返回：总学习时长（小时）
 int AppDatas::getMonthStudyHours(int year, int month) const
 {
     int totalHours = 0;

@@ -9,12 +9,9 @@ static MainWindow *g_mainWindow = nullptr;
 
 QString loadQss();
 
-// 主入口点
 int main(int argc, char *argv[])
 {
-    // 普通GUI应用程序启动
     try {
-        // 设置高DPI策略，防止窗口在不同显示器间拖动时大小改变
         QApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
         QApplication a(argc, argv);
 
@@ -45,11 +42,18 @@ int main(int argc, char *argv[])
 
         qDebug() << "Creating main window";
 
-        MainWindow w;
-        g_mainWindow = &w;
-        qDebug() << "Showing main window";
-        w.show();
+        // 检查命令行参数，判断是否是开机自启
+        bool isAutoStart = false;
+        for (int i = 1; i < argc; ++i) {
+            if (QString(argv[i]) == "--autostart") {
+                isAutoStart = true;
+                break;
+            }
+        }
+        qDebug() << "Is auto start:" << isAutoStart;
 
+        MainWindow w(isAutoStart);
+        g_mainWindow = &w;
         qDebug() << "Entering event loop";
 
         return a.exec();

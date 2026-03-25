@@ -5,13 +5,12 @@
 #include "widgets/monthview.h"
 #include "mainwindow.h"
 #include "appdatas.h"
-
-// 内存清理功能
 #include "memreduct.h"
+#include <synchapi.h>
 
 
 
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(bool isAutoStart, QWidget *parent)
     : QMainWindow(parent)
 {
     // 去除默认标题栏
@@ -47,8 +46,13 @@ MainWindow::MainWindow(QWidget *parent)
     int y = (screenGeometry.height() - this->height()) / 2;
     this->move(x, y);
 
-    // 如果不是开机自启，则显示窗口
-    if (!appDatas.isAutoStartup()) {
+    // 如果是开机自启，则隐藏窗口到托盘
+    if (isAutoStart) {
+        // 开机自启时，隐藏窗口到托盘
+        Sleep(10);
+        this->hide();
+    } else {
+        // 手动打开时，显示窗口
         this->showNormal();
         this->raise();
         this->activateWindow();
