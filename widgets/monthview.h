@@ -18,10 +18,6 @@
 // 前向声明
 class MainWindow;
 
-/**
- * @brief The MonthView class
- * 月份视窗所对应的QWidget派生类。
- */
 class MonthView : public QWidget
 {
     Q_OBJECT

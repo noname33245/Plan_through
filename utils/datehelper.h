@@ -3,12 +3,6 @@
 
 #include <QDate>
 
-/**
- * @brief The DateHelper class
- * 用于全日期视窗和月份视窗的日期管理。
- * 对于日期视窗，其相关方法会带有current这样的字符串。
- * 对于月份视窗，其相关方法会带有cale这样的字符串。
- */
 class DateHelper{
 public:
     QDate static currentDate();

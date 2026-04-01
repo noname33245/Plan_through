@@ -7,10 +7,6 @@
 #include <QPushButton>
 #include <QDialog>
 
-/**
- * @brief The TimeAxis class
- * DayView的时间轴子件。
- */
 class TimeAxis : public QWidget
 {
     Q_OBJECT

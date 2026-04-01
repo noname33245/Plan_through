@@ -147,6 +147,17 @@ void DayView::showDateSelectDialog()
     layout->setSpacing(8);
     QCalendarWidget* calendar = new QCalendarWidget;
     calendar->setSelectedDate(DateHelper::currentDate());
+    
+    // 设置日历控件样式，确保在深色主题下也能正常显示
+    calendar->setStyleSheet(
+        "QCalendarWidget { background-color: #FFFFFF; color: #333333; } "
+        "QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #2D8CF0; color: #FFFFFF; } "
+        "QCalendarWidget QAbstractItemView:enabled { background-color: #FFFFFF; color: #333333; selection-background-color: #2D8CF0; selection-color: #FFFFFF; } "
+        "QCalendarWidget QAbstractItemView:disabled { color: #CCCCCC; } "
+        "QCalendarWidget QToolButton { color: #FFFFFF; } "
+        "QCalendarWidget QSpinBox { background-color: #FFFFFF; color: #333333; border: 1px solid #CCCCCC; } "
+        "QCalendarWidget QSpinBox::up-button, QCalendarWidget QSpinBox::down-button { background-color: #F0F0F0; }"
+    );
 
     layout->addWidget(calendar);
 
@@ -254,6 +265,9 @@ void DayView::clearCurrentData()
 
 void DayView::loadDateData(const QDate& date)
 {
+    // 更新当前日期标签
+    m_selectedDateLabel->setText(QString("当前日期：%1").arg(date.toString("yyyy年MM月dd日")));
+    
     if (!appDatas.contains(date)) {
         appDatas[date] = DateStudyData();
     }

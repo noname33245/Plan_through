@@ -12,10 +12,6 @@
 #include <QMessageBox>
 #include "timeaxis.h"
 
-/**
- * @brief The DayView class
- * 日期视窗所对应的QWidget派生类。
- */
 class DayView : public QWidget
 {
     Q_OBJECT
