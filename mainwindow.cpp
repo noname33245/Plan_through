@@ -657,34 +657,36 @@ void MainWindow::showSettingsWindow()
 
     // 连接备份和恢复按钮的信号槽
     connect(createBackupBtn, &QPushButton::clicked, [=]() {
-        // 获取当前日期时间作为备份文件名
         QString backupFileName = "study_data_backup_" + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".json";
-        QString backupPath = QFileDialog::getSaveFileName(settingsDlg, "保存数据备份", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + backupFileName, "JSON Files (*.json)");
+        QString backupPath = QFileDialog::getSaveFileName(nullptr, "保存数据备份", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + backupFileName, "JSON Files (*.json)");
 
         if (!backupPath.isEmpty()) {
             if (appDatas.createBackup(backupPath)) {
-                QMessageBox::information(settingsDlg, "成功", "数据备份创建成功！\n" + backupPath);
+                QMessageBox::information(nullptr, "成功", "数据备份创建成功！\n" + backupPath);
             } else {
-                QMessageBox::critical(settingsDlg, "失败", "数据备份创建失败！");
+                QMessageBox::critical(nullptr, "失败", "数据备份创建失败！");
             }
         }
     });
 
     connect(restoreBackupBtn, &QPushButton::clicked, [=]() {
-        QString backupPath = QFileDialog::getOpenFileName(settingsDlg, "选择数据备份文件", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), "JSON Files (*.json)");
+        QString backupPath = QFileDialog::getOpenFileName(nullptr, "选择数据备份文件", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), "JSON Files (*.json)");
 
         if (!backupPath.isEmpty()) {
-            QMessageBox::StandardButton reply;
-            reply = QMessageBox::warning(settingsDlg, "警告", "从备份恢复将覆盖当前所有数据，是否继续？",
-                                        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            QMessageBox::StandardButton reply = QMessageBox::warning(
+                nullptr, 
+                "警告", 
+                "从备份恢复将覆盖当前所有数据，是否继续？",
+                QMessageBox::Yes | QMessageBox::No, 
+                QMessageBox::No
+            );
 
             if (reply == QMessageBox::Yes) {
                 if (appDatas.restoreFromBackup(backupPath)) {
-                    QMessageBox::information(settingsDlg, "成功", "数据恢复成功！");
-                    // 刷新界面数据
+                    QMessageBox::information(nullptr, "成功", "数据恢复成功！");
                     switchToDayView();
                 } else {
-                    QMessageBox::critical(settingsDlg, "失败", "数据恢复失败！");
+                    QMessageBox::critical(nullptr, "失败", "数据恢复失败！");
                 }
             }
         }
