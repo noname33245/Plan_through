@@ -38,6 +38,14 @@ TRANSLATIONS += \
 CONFIG += lrelease
 CONFIG += embed_translations
 
+# 自动将提权启动器复制到构建输出目录，便于 Qt Creator Run 配置使用
+# 启动器与 Plan_through.exe 位于同一目录，运行时以管理员权限重新启动目标程序
+elevated_runner.target = $$OUT_PWD/release/qt_run_elevated.bat
+elevated_runner.depends = $$PWD/qt_run_elevated.bat
+elevated_runner.commands = $(COPY_FILE) \"$$shell_path($$PWD/qt_run_elevated.bat)\" \"$$shell_path($$OUT_PWD/release/qt_run_elevated.bat)\"
+QMAKE_EXTRA_TARGETS += elevated_runner
+POST_TARGETDEPS += $$OUT_PWD/release/qt_run_elevated.bat
+
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
@@ -52,5 +60,6 @@ CONFIG(debug, debug|release) {
 }
 win32-msvc: QMAKE_LFLAGS += /MANIFESTUAC:"level='asInvoker' uiAccess='false'"
 win32-g++: QMAKE_LFLAGS += -mwindows
+win32: LIBS += -ladvapi32
 
 RESOURCES += res.qrc

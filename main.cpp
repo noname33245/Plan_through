@@ -1,8 +1,10 @@
 #include <QApplication>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QTimer>
 #include <Windows.h>
 #include "mainwindow.h"
+#include "appdatas.h"
 
 #define SERVER_NAME "PlanThrough_SingleInstance_Server"
 static MainWindow *g_mainWindow = nullptr;
@@ -54,6 +56,21 @@ int main(int argc, char *argv[])
 
         MainWindow w(isAutoStart);
         g_mainWindow = &w;
+
+        // 延迟到事件循环启动后同步开机自启状态
+        QTimer::singleShot(0, &a, [&]() {
+            bool enabled = appDatas.isAutoStartup();
+            qDebug() << "========== 启动时同步开机自启状态 ==========";
+            qDebug() << "配置中的 auto_startup 值:" << enabled;
+            if (enabled) {
+                qDebug() << "尝试创建/更新计划任务...";
+                appDatas.setAutoStartup(true);
+            } else {
+                qDebug() << "清理可能的残留计划任务...";
+                appDatas.setAutoStartup(false);
+            }
+        });
+
         qDebug() << "Entering event loop";
 
         return a.exec();

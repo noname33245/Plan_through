@@ -358,7 +358,7 @@ void MainWindow::showSettingsWindow()
 {
     QDialog *settingsDlg = new QDialog(this);
     settingsDlg->setWindowTitle("软件设置");
-    settingsDlg->setFixedSize(350, 500);
+    settingsDlg->setFixedSize(350, 560);
     settingsDlg->setModal(true);
     
     // 禁用所有可能的窗口动画效果
@@ -390,25 +390,34 @@ void MainWindow::showSettingsWindow()
     // 开机自启设置
     QHBoxLayout *autoStartLayout = new QHBoxLayout;
     QCheckBox *autoStartCb = new QCheckBox("开机自动启动");
-    autoStartCb->setChecked(appDatas.isAutoStartup());
+    connect(autoStartCb, &QCheckBox::checkStateChanged, this, &MainWindow::onAutoStartupChanged);
+    {
+        QSignalBlocker blocker(autoStartCb);
+        autoStartCb->setChecked(appDatas.isAutoStartup());
+    }
     autoStartLayout->addWidget(autoStartCb);
     autoStartLayout->addStretch();
-    connect(autoStartCb, &QCheckBox::checkStateChanged, this, &MainWindow::onAutoStartupChanged);
 
     // 关闭窗口后最小化到托盘设置
     QHBoxLayout *minTrayLayout = new QHBoxLayout;
     QCheckBox *minTrayCb = new QCheckBox("关闭窗口后最小化到托盘");
-    minTrayCb->setChecked(appDatas.isMinToTray());
+    connect(minTrayCb, &QCheckBox::checkStateChanged, this, &MainWindow::onMinToTrayChanged);
+    {
+        QSignalBlocker blocker(minTrayCb);
+        minTrayCb->setChecked(appDatas.isMinToTray());
+    }
     minTrayLayout->addWidget(minTrayCb);
     minTrayLayout->addStretch();
-    connect(minTrayCb, &QCheckBox::checkStateChanged, this, &MainWindow::onMinToTrayChanged);
 
     // 主题设置
     QHBoxLayout *themeLayout = new QHBoxLayout;
     QLabel *themeLab = new QLabel("软件主题：");
     QComboBox *themeCbx = new QComboBox;
     themeCbx->addItems({"简约灰", "纯净白"});
-    themeCbx->setCurrentIndex(appDatas.themeType());
+    {
+        QSignalBlocker blocker(themeCbx);
+        themeCbx->setCurrentIndex(appDatas.themeType());
+    }
     themeLayout->addWidget(themeLab);
     themeLayout->addWidget(themeCbx);
     themeLayout->addStretch();
@@ -444,23 +453,34 @@ void MainWindow::showSettingsWindow()
     connect(logBtn, &QPushButton::clicked, this, &MainWindow::openLogPath);
 
     // 微软商店评分和GitHub下载
-    QVBoxLayout *rateLayout = new QVBoxLayout;
+    QWidget *rateContainer = new QWidget;
+    rateContainer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    rateContainer->setFixedWidth(320);
+
+    QVBoxLayout *rateLayout = new QVBoxLayout(rateContainer);
+    rateLayout->setContentsMargins(0, 0, 0, 0);
+    rateLayout->setSpacing(4);
     
     // 按钮布局
     QHBoxLayout *buttonsLayout = new QHBoxLayout;
+    buttonsLayout->setSpacing(8);
     QPushButton *rateBtn = new QPushButton("微软商店好评支持一下吧 ❤️");
     rateBtn->setStyleSheet("background-color:#27AE60;");
+    rateBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     buttonsLayout->addWidget(rateBtn);
     
     QPushButton *githubBtn = new QPushButton("GitHub 下载页面");
     githubBtn->setStyleSheet("background-color:#3498DB;");
+    githubBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     buttonsLayout->addWidget(githubBtn);
-    buttonsLayout->addStretch();
     
     // 说明文字
     QLabel *downloadNoteLabel = new QLabel("如果微软商城下载的版本无法使用内存清理功能，请先尝试使用管理员打开，如果失败则从github下载软件包");
     downloadNoteLabel->setStyleSheet("font-size:10px; color:#666666;");
     downloadNoteLabel->setWordWrap(true);
+    downloadNoteLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    downloadNoteLabel->setMinimumWidth(320);
+    downloadNoteLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     
     // 添加到布局
     rateLayout->addLayout(buttonsLayout);
@@ -475,20 +495,31 @@ void MainWindow::showSettingsWindow()
         "QGroupBox{font-size:13px; font-weight:bold; color:#000000; margin-top:10px;}"
         "QGroupBox::title{subcontrol-origin: margin; left: 10px; padding: 0 5px 0 5px;}"
     );
+    // 固定自动清理分组的高度，避免内部 QLabel 文本变化引起布局抖动
+    autoMemoryCleanGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    autoMemoryCleanGroup->setMinimumHeight(165);
+
     QVBoxLayout *autoMemoryCleanLayout = new QVBoxLayout(autoMemoryCleanGroup);
-    
+    autoMemoryCleanLayout->setContentsMargins(12, 14, 12, 10);
+    autoMemoryCleanLayout->setSpacing(6);
+
     // 启用自动内存清理勾选框
     QHBoxLayout *enableAutoCleanLayout = new QHBoxLayout;
+    enableAutoCleanLayout->setSpacing(6);
     QCheckBox *enableAutoCleanCb = new QCheckBox("启用自动内存清理");
     enableAutoCleanCb->setChecked(appDatas.isAutoMemoryCleanEnabled());
+    enableAutoCleanCb->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     enableAutoCleanLayout->addWidget(enableAutoCleanCb);
     enableAutoCleanLayout->addStretch();
     
     // 检测间隔下拉框
     QHBoxLayout *intervalLayout = new QHBoxLayout;
+    intervalLayout->setSpacing(6);
     QLabel *intervalLab = new QLabel("检测间隔：");
+    intervalLab->setMinimumWidth(60);
     QComboBox *intervalCbx = new QComboBox;
     intervalCbx->addItems({"1分钟", "2分钟", "5分钟", "10分钟", "15分钟", "20分钟", "25分钟", "30分钟"});
+    intervalCbx->setMinimumWidth(120);
     // 根据appdatas中的设置初始化
     int interval = appDatas.memoryCleanInterval();
     int intervalIndex = 0;
@@ -503,9 +534,12 @@ void MainWindow::showSettingsWindow()
     
     // 内存阈值下拉框
     QHBoxLayout *thresholdLayout = new QHBoxLayout;
+    thresholdLayout->setSpacing(6);
     QLabel *thresholdLab = new QLabel("内存阈值：");
+    thresholdLab->setMinimumWidth(60);
     QComboBox *thresholdCbx = new QComboBox;
     thresholdCbx->addItems({"30%", "40%", "50%", "60%", "70%", "80%", "90%"});
+    thresholdCbx->setMinimumWidth(120);
     // 根据appdatas中的设置初始化
     int threshold = appDatas.memoryCleanThreshold();
     int thresholdIndex = qMax(0, qMin(6, (threshold / 10) - 3));
@@ -516,9 +550,14 @@ void MainWindow::showSettingsWindow()
     
     // 下次扫描内存倒计时和当前内存使用率
     QHBoxLayout *nextScanLayout = new QHBoxLayout;
+    nextScanLayout->setSpacing(6);
     QLabel *nextScanLab = new QLabel("下次扫描：");
+    nextScanLab->setMinimumWidth(60);
     QLabel *nextScanTimeLab = new QLabel("--:--:--");
+    nextScanTimeLab->setMinimumWidth(60);
+    nextScanTimeLab->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     QLabel *memoryUsageLab = new QLabel("当前内存：--%");
+    memoryUsageLab->setMinimumWidth(90);
     nextScanLayout->addWidget(nextScanLab);
     nextScanLayout->addWidget(nextScanTimeLab);
     nextScanLayout->addStretch();
@@ -534,6 +573,9 @@ void MainWindow::showSettingsWindow()
     QTimer *countdownTimer = new QTimer(settingsDlg);
     int updateCount = 0;
     connect(countdownTimer, &QTimer::timeout, [=, &updateCount]() {
+        // 禁用更新，避免在一次 tick 内多次 setText 触发布局重算导致 QGroupBox 抖动
+        settingsDlg->setUpdatesEnabled(false);
+
         // 每秒更新一次下次扫描时间
         if (m_isAutoMemoryCleanEnabled && m_memoryCleanTimer->isActive()) {
             // 计算剩余时间
@@ -552,6 +594,8 @@ void MainWindow::showSettingsWindow()
             int memoryUsage = GetCurrentMemoryUsage();
             memoryUsageLab->setText(QString("当前内存：%1%").arg(memoryUsage));
         }
+
+        settingsDlg->setUpdatesEnabled(true);
     });
     countdownTimer->start(1000); // 每秒更新一次
     
@@ -701,8 +745,8 @@ void MainWindow::showSettingsWindow()
     mainLayout->addLayout(logLayout);
     mainLayout->addLayout(backupLayout);
     mainLayout->addLayout(memoryCleanLayout);
-    mainLayout->addWidget(autoMemoryCleanGroup);
-    mainLayout->addLayout(rateLayout);
+    mainLayout->addWidget(autoMemoryCleanGroup, 0, Qt::AlignTop);
+    mainLayout->addWidget(rateContainer, 0, Qt::AlignTop);
     mainLayout->addStretch();
 
     settingsDlg->exec();
@@ -713,20 +757,35 @@ void MainWindow::showSettingsWindow()
 // @param state 复选框状态
 void MainWindow::onAutoStartupChanged(Qt::CheckState state)
 {
-    appDatas.setAutoStartup(state == Qt::Checked);
+    bool newState = (state == Qt::Checked);
+    // 只有状态真正改变时才执行
+    if (newState == appDatas.isAutoStartup()) {
+        qDebug() << "开机自启状态未变化，跳过";
+        return;
+    }
+    appDatas.setAutoStartup(newState);
 }
 
 // 最小化到托盘设置改变事件处理
 // @param state 复选框状态
 void MainWindow::onMinToTrayChanged(Qt::CheckState state)
 {
-    appDatas.setMinToTray(state == Qt::Checked);
+    bool newState = (state == Qt::Checked);
+    if (newState == appDatas.isMinToTray()) {
+        qDebug() << "最小化到托盘状态未变化，跳过";
+        return;
+    }
+    appDatas.setMinToTray(newState);
 }
 
 // 主题设置改变事件处理
 // @param index 主题索引
 void MainWindow::onThemeChanged(int index)
 {
+    if (index == appDatas.themeType()) {
+        qDebug() << "主题未变化，跳过";
+        return;
+    }
     applyTheme(index);
 }
 

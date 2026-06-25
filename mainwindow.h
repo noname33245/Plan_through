@@ -44,6 +44,7 @@
 #include <QParallelAnimationGroup>
 #include <QAbstractAnimation>
 #include <QMouseEvent>
+#include <QSignalBlocker>
 #include "widgets/dayview.h"
 #include "widgets/monthview.h"
 
@@ -59,7 +60,7 @@ public:
     QString loadQss(int type);
     
     void showWindowFromTray();
-    void showMemoryCleanError();
+    Q_INVOKABLE void showMemoryCleanError();
 
 private slots:
     void switchToDayView();

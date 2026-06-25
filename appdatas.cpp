@@ -1,5 +1,12 @@
 #include "appdatas.h"
 #include <QSettings>
+#include <QProcess>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <Windows.h>
+#include <shellapi.h>
+#include <winreg.h>
 
 AppDatas appDatas;
 
@@ -578,8 +585,9 @@ void AppDatas::loadDataFromFile()
 void AppDatas::initSettings()
 {
     m_isAutoStartup = m_appSettings->value("auto_startup", false).toBool();
-    // 不要在初始化时调用setAutoStartup，避免覆盖注册表中的路径
-    // setAutoStartup(m_isAutoStartup);
+    // 注意：此处不再直接调用 setAutoStartup()，因为 AppDatas 是全局对象，
+    // 构造发生在 main() 之前，此时尚无事件循环，ShellExecuteExW 提权对话框
+    // 无法正常显示。延迟到 main() 中事件循环启动后再执行（通过 QTimer::singleShot）。
 
     m_isMinToTray = m_appSettings->value("min_to_tray", false).toBool();
     m_themeType = m_appSettings->value("theme", 0).toInt();
@@ -619,34 +627,369 @@ void AppDatas::saveSettings()
     m_appSettings->sync();
 }
 
+// 检查当前进程是否拥有管理员权限
+static BOOL IsElevated()
+{
+    BOOL bRet = FALSE;
+    HANDLE hToken = NULL;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+    {
+        TOKEN_ELEVATION Elevation;
+        DWORD cbSize = sizeof(TOKEN_ELEVATION);
+        if (GetTokenInformation(hToken, TokenElevation, &Elevation, cbSize, &cbSize))
+        {
+            bRet = Elevation.TokenIsElevated;
+        }
+        CloseHandle(hToken);
+    }
+    return bRet;
+}
+
+// 辅助：注册表路径
+static const wchar_t kRunSubKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+static const wchar_t kAutoStartEntryName[] = L"PlanThroughStartup";
+
+// 辅助：写入 HKCU\...\Run 注册表（使用 Windows API，无需 QSettings）
+static bool writeRunRegistry(const QString &entryName, const QString &command)
+{
+    HKEY hKey = NULL;
+    LONG lRes = RegCreateKeyExW(HKEY_CURRENT_USER, kRunSubKey, 0, NULL, 0, KEY_SET_VALUE | KEY_QUERY_VALUE, NULL, &hKey, NULL);
+    if (lRes != ERROR_SUCCESS) {
+        qDebug() << QString("[AutoStartup] RegCreateKeyExW 失败，错误码: %1").arg(lRes);
+        return false;
+    }
+
+    std::wstring wName = entryName.toStdWString();
+    std::wstring wValue = command.toStdWString();
+    DWORD valueSize = (DWORD)((wValue.size() + 1) * sizeof(wchar_t));
+
+    lRes = RegSetValueExW(hKey, wName.c_str(), 0, REG_SZ, (BYTE*)wValue.c_str(), valueSize);
+    if (lRes != ERROR_SUCCESS) {
+        qDebug() << QString("[AutoStartup] RegSetValueExW 失败，错误码: %1").arg(lRes);
+        RegCloseKey(hKey);
+        return false;
+    }
+
+    // 验证
+    wchar_t buffer[2048] = {};
+    DWORD bufferSize = sizeof(buffer);
+    DWORD lType = REG_SZ;
+    lRes = RegQueryValueExW(hKey, wName.c_str(), NULL, &lType, (BYTE*)buffer, &bufferSize);
+    if (lRes == ERROR_SUCCESS) {
+        qDebug() << QString("[AutoStartup] 注册表写入验证通过，值: %1").arg(QString::fromWCharArray(buffer));
+        RegCloseKey(hKey);
+        return true;
+    } else {
+        qDebug() << QString("[AutoStartup] 注册表写入验证失败，错误码: %1").arg(lRes);
+    }
+
+    RegCloseKey(hKey);
+    return false;
+}
+
+// 辅助：从 HKCU\...\Run 注册表删除条目
+static bool deleteRunRegistry(const QString &entryName)
+{
+    HKEY hKey = NULL;
+    LONG lRes = RegOpenKeyExW(HKEY_CURRENT_USER, kRunSubKey, 0, KEY_SET_VALUE, &hKey);
+    if (lRes != ERROR_SUCCESS) {
+        qDebug() << QString("[AutoStartup] RegOpenKeyExW 失败，错误码: %1").arg(lRes);
+        return false;
+    }
+
+    std::wstring wName = entryName.toStdWString();
+    lRes = RegDeleteValueW(hKey, wName.c_str());
+    if (lRes != ERROR_SUCCESS && lRes != ERROR_FILE_NOT_FOUND) {
+        qDebug() << QString("[AutoStartup] RegDeleteValueW 失败，错误码: %1").arg(lRes);
+        RegCloseKey(hKey);
+        return false;
+    }
+
+    RegCloseKey(hKey);
+    return true;
+}
+
+// 辅助：检查注册表中是否存在条目
+static bool existsRunRegistryEntry(const QString &entryName)
+{
+    HKEY hKey = NULL;
+    LONG lRes = RegOpenKeyExW(HKEY_CURRENT_USER, kRunSubKey, 0, KEY_QUERY_VALUE, &hKey);
+    if (lRes != ERROR_SUCCESS) return false;
+
+    std::wstring wName = entryName.toStdWString();
+    wchar_t buffer[2048] = {};
+    DWORD bufferSize = sizeof(buffer);
+    DWORD lType = REG_SZ;
+    lRes = RegQueryValueExW(hKey, wName.c_str(), NULL, &lType, (BYTE*)buffer, &bufferSize);
+    RegCloseKey(hKey);
+    return (lRes == ERROR_SUCCESS);
+}
+
+// 辅助：清理系统中可能残留的 PlanThrough 开机自启项
+static void cleanupAllAutoStartResidue()
+{
+    qDebug() << "[AutoStartup] 开始清理所有残留项...";
+
+    // 1) 清理旧版 schtasks 创建的计划任务
+    QStringList queryArgs = {"/query", "/fo", "CSV", "/v"};
+    QProcess queryProc;
+    queryProc.setProgram("schtasks");
+    queryProc.setArguments(queryArgs);
+    queryProc.setProcessChannelMode(QProcess::SeparateChannels);
+    queryProc.start();
+    if (queryProc.waitForFinished(5000)) {
+        QString output = QString::fromLocal8Bit(queryProc.readAllStandardOutput());
+        QStringList lines = output.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            if (line.contains("PlanThrough", Qt::CaseInsensitive)
+                || line.contains("Plan_through", Qt::CaseInsensitive)) {
+                int firstQuote = line.indexOf('"');
+                int secondQuote = line.indexOf('"', firstQuote + 1);
+                if (firstQuote >= 0 && secondQuote > firstQuote) {
+                    QString name = line.mid(firstQuote + 1, secondQuote - firstQuote - 1);
+                    qDebug() << "[AutoStartup] 发现残留计划任务:" << name << "尝试删除";
+                    QProcess delProc;
+                    delProc.setProgram("schtasks");
+                    delProc.setArguments({"/delete", "/tn", name, "/f"});
+                    delProc.setProcessChannelMode(QProcess::SeparateChannels);
+                    delProc.start();
+                    if (delProc.waitForFinished(3000)) {
+                        int code = delProc.exitCode();
+                        if (code == 0) {
+                            qDebug() << "[AutoStartup] 已删除残留计划任务:" << name;
+                        } else {
+                            qDebug() << "[AutoStartup] 删除计划任务失败:" << name
+                                     << QString::fromLocal8Bit(delProc.readAllStandardError()).trimmed();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2) 清理注册表残留（使用 Windows API）
+    QStringList candidates = {"PlanThroughStartup", "PlanThrough", "Plan_through", "Plan_through_Startup"};
+    for (const QString &cand : candidates) {
+        if (existsRunRegistryEntry(cand)) {
+            deleteRunRegistry(cand);
+            qDebug() << "[AutoStartup] 已清理注册表残留项:" << cand;
+        }
+    }
+
+    // 3) 清理启动文件夹残留
+    QString startupDir = QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation)
+                         + "/Startup";
+    QDir dir(startupDir);
+    if (dir.exists()) {
+        QStringList filters = {"*.lnk", "*.url", "*.exe", "*.cmd", "*.bat"};
+        QStringList entries = dir.entryList(filters, QDir::Files | QDir::NoSymLinks);
+        for (const QString &entry : entries) {
+            QString lower = entry.toLower();
+            if (lower.contains("planthrough") || lower.contains("plan_through")) {
+                QString path = dir.absoluteFilePath(entry);
+                if (QFile::remove(path)) {
+                    qDebug() << "[AutoStartup] 已清理启动文件夹残留项:" << path;
+                }
+            }
+        }
+    }
+
+    qDebug() << "[AutoStartup] 残留清理完成";
+}
+
+// 辅助：获取并验证当前程序的 exe 路径
+// 返回值：{ 是否成功, exe完整路径, exe所在目录 }
+struct ExePathInfo {
+    bool valid;
+    QString exePath;
+    QString dirPath;
+};
+
+static ExePathInfo getCurrentExePath()
+{
+    ExePathInfo info;
+    info.valid = false;
+    info.exePath.clear();
+    info.dirPath.clear();
+
+    QString exePath = QApplication::applicationFilePath();
+    if (exePath.isEmpty()) {
+        qDebug() << "[AutoStartup] 错误：无法获取程序路径";
+        return info;
+    }
+
+    exePath = exePath.replace("/", "\\");
+    QFileInfo fi(exePath);
+    if (!fi.exists()) {
+        qDebug() << QString("[AutoStartup] 错误：exe 不存在: %1").arg(exePath);
+        return info;
+    }
+
+    if (!fi.isFile()) {
+        qDebug() << QString("[AutoStartup] 错误：路径不是文件: %1").arg(exePath);
+        return info;
+    }
+
+    info.valid = true;
+    info.exePath = fi.absoluteFilePath();
+    info.dirPath = fi.absolutePath();
+    qDebug() << QString("[AutoStartup] 获取到 exe 路径: %1").arg(info.exePath);
+    qDebug() << QString("[AutoStartup] exe 所在目录: %1").arg(info.dirPath);
+
+    // 检查是否是开发环境（Qt Creator 启动）
+    // 如果路径包含 "build" 或 "Qt Creator"，可能不是最终发布版本
+    if (info.exePath.contains("/build/", Qt::CaseInsensitive)
+        || info.exePath.contains("\\build\\", Qt::CaseInsensitive)) {
+        qDebug() << "[AutoStartup] 警告：当前在开发环境中，设置开机自启的是构建目录中的 exe";
+        qDebug() << "[AutoStartup] 发布到生产环境后请重新设置开机自启";
+    }
+
+    return info;
+}
+
+// 辅助：确保启动脚本存在
+// 使用 wscript.exe 执行 VBS 脚本，完全隐藏命令行窗口
+static bool ensureStartupScript()
+{
+    ExePathInfo exeInfo = getCurrentExePath();
+    if (!exeInfo.valid) {
+        qDebug() << "[AutoStartup] 无法创建启动脚本：exe 路径无效";
+        return false;
+    }
+
+    // 创建 VBS 脚本
+    QString vbsPath = QDir(exeInfo.dirPath).absoluteFilePath("autostart.vbs");
+    QString batPath = QDir(exeInfo.dirPath).absoluteFilePath("autostart.bat");
+
+    // 获取路径并替换斜杠
+    QString dirPathStr = exeInfo.dirPath;
+    dirPathStr.replace("/", "\\");
+    QString exePathStr = exeInfo.exePath;
+    exePathStr.replace("/", "\\");
+
+    // 创建 VBS 脚本（用于开机自启，完全无窗口）
+    {
+        QFile file(vbsPath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            // VBS 中的字符串用双引号括起来，反斜杠不需要转义
+            QString vbsContent;
+            vbsContent += "Set ws = CreateObject(\"WScript.Shell\")\r\n";
+            vbsContent += "ws.CurrentDirectory = \"" + dirPathStr + "\"\r\n";
+            vbsContent += "ws.Run \"\"\"" + exePathStr + "\"\" --autostart\", 0, False\r\n";
+
+            file.write(vbsContent.toUtf8());
+            file.close();
+            qDebug() << QString("[AutoStartup] 已创建 VBS 启动脚本: %1").arg(vbsPath);
+        } else {
+            qDebug() << QString("[AutoStartup] 创建 VBS 脚本失败: %1").arg(vbsPath);
+            return false;
+        }
+    }
+
+    // 同时创建 bat 脚本作为手动测试用（会显示窗口）
+    {
+        QFile file(batPath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QString batContent;
+            batContent += "@echo off\r\n";
+            batContent += "cd /d \"" + dirPathStr + "\"\r\n";
+            batContent += "start \"\" /min \"" + exePathStr + "\" --autostart\r\n";
+
+            file.write(batContent.toUtf8());
+            file.close();
+            qDebug() << QString("[AutoStartup] 已创建 BAT 测试脚本: %1").arg(batPath);
+        }
+    }
+
+    return true;
+}
+
+// 设置或取消开机自启（通过注册表 HKCU Run 键实现，无需管理员权限）
+static bool performAutoStartupOperation(const QString &operation)
+{
+    // 首先获取并验证 exe 路径
+    ExePathInfo exeInfo = getCurrentExePath();
+    if (!exeInfo.valid) {
+        qDebug() << "[AutoStartup] 无法设置开机自启：exe 路径无效";
+        return false;
+    }
+
+    QString entryName = "PlanThroughStartup";
+
+    qDebug() << QString("[AutoStartup] 操作: %1").arg(operation);
+    qDebug() << QString("[AutoStartup] exe 路径: %1").arg(exeInfo.exePath);
+    qDebug() << QString("[AutoStartup] exe 目录: %1").arg(exeInfo.dirPath);
+
+    if (operation == "disable") {
+        cleanupAllAutoStartResidue();
+        if (existsRunRegistryEntry(entryName)) {
+            deleteRunRegistry(entryName);
+            qDebug() << QString("[AutoStartup] 已删除注册表项: %1").arg(entryName);
+        }
+        qDebug() << "[AutoStartup] 开机自启已禁用";
+        return true;
+    }
+
+    // operation == "enable"
+    cleanupAllAutoStartResidue();
+
+    // 确保启动脚本存在且路径正确
+    if (!ensureStartupScript()) {
+        qDebug() << "[AutoStartup] 无法设置开机自启：启动脚本创建失败";
+        return false;
+    }
+
+    QString vbsPath = QDir(exeInfo.dirPath).absoluteFilePath("autostart.vbs");
+    vbsPath = vbsPath.replace("/", "\\");
+
+    // 先验证 VBS 脚本是否存在
+    if (!QFile::exists(vbsPath)) {
+        qDebug() << QString("[AutoStartup] 错误：VBS 脚本不存在: %1").arg(vbsPath);
+        return false;
+    }
+
+    // 使用 wscript.exe 执行 VBS 脚本，完全隐藏窗口
+    QString command = QString("wscript.exe \"%1\"").arg(vbsPath);
+    qDebug() << QString("[AutoStartup] 注册表启动命令: %1").arg(command);
+    qDebug() << QString("[AutoStartup] VBS 脚本路径: %1").arg(vbsPath);
+
+    // 写入注册表
+    bool ok = writeRunRegistry(entryName, command);
+    if (ok) {
+        qDebug() << "[AutoStartup] 开机自启已启用（注册表 Run 键 + VBS 无窗口启动）";
+        qDebug() << "[AutoStartup] 下次启动将使用此 exe: " << exeInfo.exePath;
+        return true;
+    }
+
+    qDebug() << "[AutoStartup] 开机自启启用失败";
+    return false;
+}
+
 // 设置是否自动启动
-// 参数1：是否自动启动
 void AppDatas::setAutoStartup(bool isAuto)
 {
+    qDebug() << "========== setAutoStartup 开始 ==========";
     m_isAutoStartup = isAuto;
-    
-    QString taskName = "PlanThroughStartup";
-    QString executablePath = QApplication::applicationFilePath();
-    executablePath = executablePath.replace("/", "\\");
-    
-    if(isAuto) {
-        // 使用任务计划程序添加开机自启，添加--autostart参数
-        QString command = QString("schtasks /create /tn %1 /tr \"%2 --autostart\" /sc onlogon /rl highest /f").arg(taskName).arg(executablePath);
-        int result = system(command.toLocal8Bit().constData());
-        if(result == 0) {
-            qDebug() << "添加到开机自启成功（任务计划程序）：" << executablePath;
+    // 立即保存到配置文件
+    m_appSettings->setValue("auto_startup", isAuto);
+    m_appSettings->sync();
+    qDebug() << "已保存 auto_startup =" << isAuto << "到 app_settings.ini";
+
+    if (isAuto) {
+        bool ok = performAutoStartupOperation("enable");
+        if (ok) {
+            qDebug() << "========== setAutoStartup 完成: 成功启用 ==========";
         } else {
-            qDebug() << "添加到开机自启失败（任务计划程序）";
+            // 创建失败时回滚配置
+            m_isAutoStartup = false;
+            m_appSettings->setValue("auto_startup", false);
+            m_appSettings->sync();
+            qDebug() << "创建失败，已回滚配置为 auto_startup = false";
+            qDebug() << "========== setAutoStartup 完成: 启用失败 ==========";
         }
     } else {
-        // 使用任务计划程序移除开机自启
-        QString command = QString("schtasks /delete /tn %1 /f").arg(taskName);
-        int result = system(command.toLocal8Bit().constData());
-        if(result == 0) {
-            qDebug() << "从开机自启中移除成功（任务计划程序）";
-        } else {
-            qDebug() << "从开机自启中移除失败（任务计划程序）";
-        }
+        performAutoStartupOperation("disable");
+        qDebug() << "========== setAutoStartup 完成: 已禁用 ==========";
     }
 }
 
