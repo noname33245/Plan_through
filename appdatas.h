@@ -47,6 +47,19 @@ public:
     void setMaxContinDays(int continDays){m_maxContinuousDays = continDays;}
     void setDefaultViewType(int viewType){m_defaultViewType = viewType;}
     int defaultViewType(){return m_defaultViewType;}
+
+    // 时间轴起止小时（含两端）
+    void setDayStartHour(int hour){m_dayStartHour = hour;}
+    void setDayEndHour(int hour){m_dayEndHour = hour;}
+    int dayStartHour(){return m_dayStartHour;}
+    int dayEndHour(){return m_dayEndHour;}
+    QList<int> dayHours() const;
+
+    // 每日提醒
+    void setReminderEnabled(bool enabled){m_reminderEnabled = enabled;}
+    bool isReminderEnabled(){return m_reminderEnabled;}
+    void setReminderTime(const QString &time){m_reminderTime = time;}
+    QString reminderTime(){return m_reminderTime;}
     
     // 重载[]运算符，用于访问指定日期的学习数据
     DateStudyData& operator[](const QDate& key){return m_studyDataMap[key];}
@@ -111,10 +124,19 @@ private:
     // 默认视图设置
     int m_defaultViewType = 0; // 0: 月视图, 1: 日视图
 
+    // 时间轴范围（默认 8:00 - 23:00）
+    int m_dayStartHour = 8;
+    int m_dayEndHour = 23;
+
+    // 每日提醒
+    bool m_reminderEnabled = false;
+    QString m_reminderTime = "21:00";
+
 private:
     void saveLog();
     void cleanupOldLogs();
     bool loadDataFromLogs();
+    void rotateDailyBackup(const QString &latestBackupPath);
 };
 
 extern AppDatas appDatas;

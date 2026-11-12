@@ -14,24 +14,27 @@ SOURCES += appdatas.cpp \
     main.cpp \
     mainwindow.cpp \
     memreduct.cpp \
-    utils/datehelper.cpp \
-    utils/widgetcontainer.cpp \
+    utils/theme.cpp \
+    utils/studystats.cpp \
     widgets/dayview.cpp \
     widgets/monthview.cpp \
+    widgets/settingsdialog.cpp \
     widgets/timeaxis.cpp
 
 HEADERS += appdatas.h \
     datastruct.h \
     mainwindow.h \
     memreduct.h \
-    utils/datehelper.h \
-    utils/widgetcontainer.h \
+    utils/theme.h \
+    utils/studystats.h \
+    utils/dialoganimator.h \
     widgets/dayview.h \
+    widgets/heatmapwidget.h \
     widgets/monthview.h \
-    widgets/timeaxis.h
-
-FORMS += \
-    mainwindow.ui
+    widgets/resizehandle.h \
+    widgets/settingsdialog.h \
+    widgets/timeaxis.h \
+    widgets/roundprogressbar.h
 
 TRANSLATIONS += \
     Plan_through_zh_CN.ts

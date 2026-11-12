@@ -1,4 +1,5 @@
 #include "appdatas.h"
+#include "utils/studystats.h"
 #include <QSettings>
 #include <QProcess>
 #include <QDir>
@@ -160,24 +161,7 @@ void AppDatas::saveDataToFile()
         DateStudyData data = dateIt.value();
         QString dateStr = date.toString("yyyy-MM-dd");
 
-        QJsonObject studyObj;
-        studyObj.insert("studyHours", data.studyHours);
-        studyObj.insert("completedProjects", data.completedProjects);
-        studyObj.insert("totalProjects", data.totalProjects);
-
-        QJsonObject timeAxisObj;
-        QMap<int, TimeAxisItem>::const_iterator timeIt = data.timeAxisData.constBegin();
-        while(timeIt != data.timeAxisData.constEnd())
-        {
-            int hour = timeIt.key();
-            TimeAxisItem item = timeIt.value();
-            QJsonObject itemObj;
-            itemObj.insert("type", item.type);
-            itemObj.insert("isCompleted", item.isCompleted);
-            timeAxisObj.insert(QString::number(hour), itemObj);
-            ++timeIt;
-        }
-        studyObj.insert("timeAxisData", timeAxisObj);
+        QJsonObject studyObj = StudyStats::toJson(data);
         dateObj.insert(dateStr, studyObj);
         ++dateIt;
     }
@@ -250,12 +234,41 @@ void AppDatas::saveDataToFile()
     }
     
     qDebug() << "学习数据保存成功：" << m_saveFilePath;
-    
-    // 删除备份文件
+
+    // 按日期留一份快照（同一天只留一份），study_data.json 损坏时可用于回溯
+    rotateDailyBackup(backupFilePath);
+
+    // 删除临时备份文件
     QFile::remove(backupFilePath);
-    
+
     // 保存数据后写入日志
     saveLog();
+}
+
+// 把刚生成的 .bak 复制成 study_data.json.YYYYMMDD.bak，并清理 7 天前的快照
+void AppDatas::rotateDailyBackup(const QString &latestBackupPath)
+{
+    if (!QFile::exists(latestBackupPath)) {
+        return;
+    }
+
+    const QFileInfo saveInfo(m_saveFilePath);
+    const QDir dir(saveInfo.absolutePath());
+    const QDate today = QDate::currentDate();
+
+    const QString snapshot = m_saveFilePath + "." + today.toString("yyyyMMdd") + ".bak";
+    if (!QFile::exists(snapshot)) {
+        QFile::copy(latestBackupPath, snapshot);
+    }
+
+    const QFileInfoList snapshots = dir.entryInfoList(
+        QStringList() << (saveInfo.fileName() + ".*.bak"), QDir::Files, QDir::Name);
+    for (const QFileInfo &info : snapshots) {
+        const QDate stamp = QDate::fromString(info.fileName().section('.', -2, -2), "yyyyMMdd");
+        if (stamp.isValid() && stamp.daysTo(today) > 7) {
+            QFile::remove(info.absoluteFilePath());
+        }
+    }
 }
 
 // 保存每日日志
@@ -273,24 +286,7 @@ void AppDatas::saveLog()
         const DateStudyData& data = m_studyDataMap[currentDate];
         QString dateStr = currentDate.toString("yyyy-MM-dd");
         
-        QJsonObject studyObj;
-        studyObj.insert("studyHours", data.studyHours);
-        studyObj.insert("completedProjects", data.completedProjects);
-        studyObj.insert("totalProjects", data.totalProjects);
-        
-        QJsonObject timeAxisObj;
-        QMap<int, TimeAxisItem>::const_iterator timeIt = data.timeAxisData.constBegin();
-        while(timeIt != data.timeAxisData.constEnd())
-        {
-            int hour = timeIt.key();
-            const TimeAxisItem& item = timeIt.value();
-            QJsonObject itemObj;
-            itemObj.insert("type", item.type);
-            itemObj.insert("isCompleted", item.isCompleted);
-            timeAxisObj.insert(QString::number(hour), itemObj);
-            ++timeIt;
-        }
-        studyObj.insert("timeAxisData", timeAxisObj);
+        QJsonObject studyObj = StudyStats::toJson(data);
         dateObj.insert(dateStr, studyObj);
     }
     
@@ -432,32 +428,7 @@ bool AppDatas::loadDataFromLogs()
                 }
                 
                 QJsonObject studyObj = dateObj[dateStr].toObject();
-                DateStudyData studyData;
-                studyData.studyHours = studyObj["studyHours"].toInt();
-                studyData.completedProjects = studyObj["completedProjects"].toInt();
-                studyData.totalProjects = studyObj["totalProjects"].toInt();
-                
-                // 加载时间轴数据
-                if (studyObj.contains("timeAxisData")) {
-                    QJsonObject timeAxisObj = studyObj["timeAxisData"].toObject();
-                    QStringList hourList = timeAxisObj.keys();
-                    
-                    foreach (QString hourStr, hourList)
-                    {
-                        bool ok;
-                        int hour = hourStr.toInt(&ok);
-                        if(!ok) {
-                            qWarning() << "日志文件" << logFilePath << "中存在无效的小时格式：" << hourStr;
-                            continue;
-                        }
-                        
-                        QJsonObject itemObj = timeAxisObj[hourStr].toObject();
-                        TimeAxisItem item;
-                        item.type = itemObj["type"].toString();
-                        item.isCompleted = itemObj["isCompleted"].toBool();
-                        studyData.timeAxisData.insert(hour, item);
-                    }
-                }
+                DateStudyData studyData = StudyStats::fromJson(studyObj);
                 
                 m_studyDataMap.insert(date, studyData);
                 loadedDays++;
@@ -521,32 +492,7 @@ void AppDatas::loadDataFromFile()
                             }
                             
                             QJsonObject studyObj = dateObj[dateStr].toObject();
-                            DateStudyData studyData;
-                            studyData.studyHours = studyObj["studyHours"].toInt();
-                            studyData.completedProjects = studyObj["completedProjects"].toInt();
-                            studyData.totalProjects = studyObj["totalProjects"].toInt();
-                            
-                            // 加载时间轴数据
-                            if (studyObj.contains("timeAxisData")) {
-                                QJsonObject timeAxisObj = studyObj["timeAxisData"].toObject();
-                                QStringList hourList = timeAxisObj.keys();
-                                
-                                foreach (QString hourStr, hourList)
-                                {
-                                    bool ok;
-                                    int hour = hourStr.toInt(&ok);
-                                    if(!ok) {
-                                        qWarning() << "无效的小时格式：" << hourStr;
-                                        continue;
-                                    }
-                                    
-                                    QJsonObject itemObj = timeAxisObj[hourStr].toObject();
-                                    TimeAxisItem item;
-                                    item.type = itemObj["type"].toString();
-                                    item.isCompleted = itemObj["isCompleted"].toBool();
-                                    studyData.timeAxisData.insert(hour, item);
-                                }
-                            }
+                            DateStudyData studyData = StudyStats::fromJson(studyObj);
                             
                             m_studyDataMap.insert(date, studyData);
                             loadedDays++;
@@ -603,6 +549,18 @@ void AppDatas::initSettings()
     
     // 加载默认视图设置
     m_defaultViewType = m_appSettings->value("default_view_type", 0).toInt();
+
+    // 时间轴范围
+    m_dayStartHour = qBound(0, m_appSettings->value("day_start_hour", 8).toInt(), 23);
+    m_dayEndHour = qBound(0, m_appSettings->value("day_end_hour", 23).toInt(), 23);
+    if (m_dayEndHour <= m_dayStartHour) {
+        m_dayStartHour = 8;
+        m_dayEndHour = 23;
+    }
+
+    // 每日提醒
+    m_reminderEnabled = m_appSettings->value("reminder_enabled", false).toBool();
+    m_reminderTime = m_appSettings->value("reminder_time", "21:00").toString();
 }
 
 // 保存设置
@@ -623,26 +581,16 @@ void AppDatas::saveSettings()
     
     // 保存默认视图设置
     m_appSettings->setValue("default_view_type", m_defaultViewType);
-    
-    m_appSettings->sync();
-}
 
-// 检查当前进程是否拥有管理员权限
-static BOOL IsElevated()
-{
-    BOOL bRet = FALSE;
-    HANDLE hToken = NULL;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
-    {
-        TOKEN_ELEVATION Elevation;
-        DWORD cbSize = sizeof(TOKEN_ELEVATION);
-        if (GetTokenInformation(hToken, TokenElevation, &Elevation, cbSize, &cbSize))
-        {
-            bRet = Elevation.TokenIsElevated;
-        }
-        CloseHandle(hToken);
-    }
-    return bRet;
+    // 时间轴范围
+    m_appSettings->setValue("day_start_hour", m_dayStartHour);
+    m_appSettings->setValue("day_end_hour", m_dayEndHour);
+
+    // 每日提醒
+    m_appSettings->setValue("reminder_enabled", m_reminderEnabled);
+    m_appSettings->setValue("reminder_time", m_reminderTime);
+
+    m_appSettings->sync();
 }
 
 // 辅助：注册表路径
@@ -1008,13 +956,7 @@ const QString& AppDatas::path(QString type){
 // 返回：连续学习天数
 int AppDatas::calculateContinuousDays()
 {
-    int days = 0;
-    QDate current = QDate::currentDate();
-    while (contains(current)) {
-        days++;
-        current = current.addDays(-1);
-    }
-    return days;
+    return StudyStats::continuousDays(m_studyDataMap, QDate::currentDate());
 }
 
 // 创建数据备份
@@ -1036,24 +978,7 @@ bool AppDatas::createBackup(const QString& backupPath)
         DateStudyData data = dateIt.value();
         QString dateStr = date.toString("yyyy-MM-dd");
 
-        QJsonObject studyObj;
-        studyObj.insert("studyHours", data.studyHours);
-        studyObj.insert("completedProjects", data.completedProjects);
-        studyObj.insert("totalProjects", data.totalProjects);
-
-        QJsonObject timeAxisObj;
-        QMap<int, TimeAxisItem>::const_iterator timeIt = data.timeAxisData.constBegin();
-        while(timeIt != data.timeAxisData.constEnd())
-        {
-            int hour = timeIt.key();
-            TimeAxisItem item = timeIt.value();
-            QJsonObject itemObj;
-            itemObj.insert("type", item.type);
-            itemObj.insert("isCompleted", item.isCompleted);
-            timeAxisObj.insert(QString::number(hour), itemObj);
-            ++timeIt;
-        }
-        studyObj.insert("timeAxisData", timeAxisObj);
+        QJsonObject studyObj = StudyStats::toJson(data);
         dateObj.insert(dateStr, studyObj);
         ++dateIt;
     }
@@ -1170,32 +1095,7 @@ bool AppDatas::restoreFromBackup(const QString& backupPath)
             }
             
             QJsonObject studyObj = dateObj[dateStr].toObject();
-            DateStudyData studyData;
-            studyData.studyHours = studyObj["studyHours"].toInt();
-            studyData.completedProjects = studyObj["completedProjects"].toInt();
-            studyData.totalProjects = studyObj["totalProjects"].toInt();
-            
-            // 加载时间轴数据
-            if (studyObj.contains("timeAxisData")) {
-                QJsonObject timeAxisObj = studyObj["timeAxisData"].toObject();
-                QStringList hourList = timeAxisObj.keys();
-                
-                foreach (QString hourStr, hourList)
-                {
-                    bool ok;
-                    int hour = hourStr.toInt(&ok);
-                    if(!ok) {
-                        qWarning() << "备份文件中存在无效的小时格式：" << hourStr;
-                        continue;
-                    }
-                    
-                    QJsonObject itemObj = timeAxisObj[hourStr].toObject();
-                    TimeAxisItem item;
-                    item.type = itemObj["type"].toString();
-                    item.isCompleted = itemObj["isCompleted"].toBool();
-                    studyData.timeAxisData.insert(hour, item);
-                }
-            }
+            DateStudyData studyData = StudyStats::fromJson(studyObj);
             
             tempStudyDataMap.insert(date, studyData);
             loadedDays++;
@@ -1261,19 +1161,24 @@ double AppDatas::getAverageStudyHoursPerDay() const
 
 double AppDatas::getRecentMonthAverageStudyHoursPerDay() const
 {
-    QMap<QDate, DateStudyData> recentData = getRecentStudyData(30);
+    const QDate today = QDate::currentDate();
+
+    // 取 31 天再跳过今天：今天还没过完，算进平均会把它拉低。
+    // 跳过后正好是「昨天往前 30 天」的完整窗口
+    const QMap<QDate, DateStudyData> recentData = getRecentStudyData(31);
+
     int totalDays = 0;
     int totalHours = 0;
-    
-    QMap<QDate, DateStudyData>::const_iterator it = recentData.constBegin();
-    while (it != recentData.constEnd()) {
+    for (auto it = recentData.constBegin(); it != recentData.constEnd(); ++it) {
+        if (it.key() >= today) {
+            continue;
+        }
         if (it.value().studyHours > 0) {
-            totalDays++;
+            ++totalDays;
             totalHours += it.value().studyHours;
         }
-        ++it;
     }
-    
+
     if (totalDays == 0) {
         return 0.0;
     }
@@ -1328,16 +1233,15 @@ QMap<QDate, DateStudyData> AppDatas::getRecentStudyData(int days) const
 
 int AppDatas::getMonthStudyHours(int year, int month) const
 {
-    int totalHours = 0;
-    QDate firstDay(year, month, 1);
-    int daysInMonth = firstDay.daysInMonth();
-    
-    for (int day = 1; day <= daysInMonth; ++day) {
-        QDate currentDate(year, month, day);
-        if (m_studyDataMap.contains(currentDate)) {
-            totalHours += m_studyDataMap[currentDate].studyHours;
-        }
+    return StudyStats::monthStudyHours(m_studyDataMap, year, month);
+}
+
+// 时间轴要显示的小时列表（含起止小时）
+QList<int> AppDatas::dayHours() const
+{
+    QList<int> hours;
+    for (int h = m_dayStartHour; h <= m_dayEndHour; ++h) {
+        hours.append(h);
     }
-    
-    return totalHours;
+    return hours;
 }

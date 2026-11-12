@@ -57,7 +57,6 @@ public:
     ~MainWindow();
     
     void applyTheme(int themeType);
-    QString loadQss(int type);
     
     void showWindowFromTray();
     Q_INVOKABLE void showMemoryCleanError();
@@ -67,14 +66,13 @@ private slots:
     void switchToMonthView();
     void showSettingsWindow();
     void onTrayIconClicked(QSystemTrayIcon::ActivationReason reason);
-    void onAutoStartupChanged(Qt::CheckState state);
-    void onMinToTrayChanged(Qt::CheckState state);
     void onThemeChanged(int index);
-    void openSavePath();
-    void openLogPath();
-    void goToMsStoreRate();
-    void goToGithubReleases();
+    void onAutoMemoryCleanSettingsChanged();
     void checkMemoryUsage();
+    // 按今日完成度重绘托盘图标
+    void updateTrayIcon();
+    // 到点检查是否提醒今日未达标
+    void checkReminder();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -87,6 +85,7 @@ protected:
 private:
     void initUI();
     void initSystemTray();
+    void switchToView(int targetIndex);
     
 
 
@@ -113,14 +112,17 @@ private:
     
     // 窗口大小调整相关
     QWidget *m_resizeHandle = nullptr;
-    bool m_isResizing = false;
-    QPoint m_resizeStartPos;
     
     // 自动内存清理相关
     QTimer *m_memoryCleanTimer = nullptr;
     int m_memoryCleanInterval = 10; // 默认10分钟
     int m_memoryCleanThreshold = 60; // 默认60%
     bool m_isAutoMemoryCleanEnabled = false;
+
+    // 每日提醒
+    QTimer *m_reminderTimer = nullptr;
+    QDate m_lastReminderDate;
+    QDate m_lastTrayDate;      // 托盘进度所属日期，用于跨天归零
 };
 
 #endif

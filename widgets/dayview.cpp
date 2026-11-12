@@ -2,14 +2,14 @@
 #include "monthview.h"
 #include "./datastruct.h"
 #include "./appdatas.h"
-#include "./utils/datehelper.h"
-#include "./utils/widgetcontainer.h"
+#include "./utils/dialoganimator.h"
+#include "./utils/theme.h"
+#include <QEvent>
 #include <QStyle>
 
 DayView::DayView(QWidget *parent)
     : QWidget{parent}
 {
-    widgetContainer("dayView",this);
     this->setObjectName("dayView");
     QVBoxLayout* pageLayout = new QVBoxLayout(this);
     pageLayout->setObjectName("pageLayout");
@@ -36,15 +36,31 @@ DayView::DayView(QWidget *parent)
 
     QVBoxLayout* progressLayout = new QVBoxLayout(progressGroup);
 
-    QHBoxLayout* progressHeaderLayout = new QHBoxLayout;
+    // 标题行不放进布局，而是浮在分组框上边线上（对齐 QGroupBox 标题的视觉位置），
+    // 宽度随分组框变化，见 layoutProgressHeader()
+    m_progressHeader = new QWidget(progressGroup);
+    m_progressHeader->setObjectName("progressHeader");
+    m_progressHeader->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    QHBoxLayout* progressHeaderLayout = new QHBoxLayout(m_progressHeader);
+    progressHeaderLayout->setContentsMargins(10, 0, 10, 0);
+    progressHeaderLayout->setSpacing(6);
+
     QLabel* progressTitle = new QLabel("📚 学习进度");
     progressTitle->setObjectName("progressTitle");
+    // 固定 16px 高：让标题中线正好落在分组框上边线（margin-top=8）上，
+    // QSS 里那条「上半页面色 / 下半卡片色」的渐变分界才能和边框线对齐
+    progressTitle->setFixedHeight(16);
+
     m_selectedDateLabel = new QLabel();
     m_selectedDateLabel->setObjectName("selectedDateLabel");
-    m_selectedDateLabel->setText(QString("当前日期：%1").arg(DateHelper::currentDate().toString("yyyy年MM月dd日")));
+    m_selectedDateLabel->setFixedHeight(16);
+    m_selectedDateLabel->setText(QString("当前日期：%1").arg(m_date.toString("yyyy年MM月dd日")));
+    m_selectedDateLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     progressHeaderLayout->addWidget(progressTitle);
     progressHeaderLayout->addStretch();
     progressHeaderLayout->addWidget(m_selectedDateLabel);
+
+    progressGroup->installEventFilter(this);
 
     // 创建今日学习和设置目标的水平布局
     QHBoxLayout* todayStudyLayout = new QHBoxLayout;
@@ -52,7 +68,7 @@ DayView::DayView(QWidget *parent)
     m_todayStudyHourLabel = new QLabel();
     m_todayStudyHourLabel->setObjectName("todayStudyHourLabel");
     // 使用HTML格式化文本，将目标部分设为绿色
-    m_todayStudyHourLabel->setText(QString("今日学习：0小时 / <font color='#27AE60'>目标%1小时</font>").arg(appDatas.targetHour()));
+    m_todayStudyHourLabel->setText(QString("今日学习：0小时 / <font color='%1'>目标%2小时</font>").arg(Theme::colors().success).arg(appDatas.targetHour()));
     m_todayStudyHourLabel->setTextFormat(Qt::RichText);
 
     // 添加设置目标按钮
@@ -63,15 +79,23 @@ DayView::DayView(QWidget *parent)
     todayStudyLayout->addStretch();
     todayStudyLayout->addWidget(setTargetBtn);
 
-    m_dayProgressBar = new QProgressBar;
+    m_dayProgressBar = new RoundProgressBar;
     m_dayProgressBar->setAlignment(Qt::AlignCenter);
-    m_dayProgressBar->setRange(0, appDatas.targetHour());
+    m_dayProgressBar->setRange(0, appDatas.targetHour() * PROGRESS_SCALE);
     m_dayProgressBar->setValue(0);
+    m_dayProgressBar->setFormat("%p%");
 
-    progressLayout->addLayout(progressHeaderLayout);
+    // 进度条动画：增加时弹性回弹，减少时平滑缓出（缓动曲线在 animateProgress 中按方向动态切换）
+    m_progressAnimation = new QPropertyAnimation(m_dayProgressBar, "value", this);
+    m_progressAnimation->setDuration(900);
+    m_progressAnimation->setEasingCurve(QEasingCurve::OutCubic);
+
     progressLayout->addLayout(todayStudyLayout);
     progressLayout->addWidget(m_dayProgressBar);
     pageLayout->addWidget(progressGroup);
+
+    // 首次按实际宽度摆好标题行
+    layoutProgressHeader();
 
 
 
@@ -95,12 +119,12 @@ DayView::DayView(QWidget *parent)
     statsLayout->addWidget(m_studyCheckLabel, 1, 1);
     pageLayout->addWidget(statsGroup);
 
-    QScrollArea* timeAxisScroll = new QScrollArea(this);
-    timeAxisScroll->setWidgetResizable(true);
-    timeAxisScroll->setObjectName("timeAxisScroll");
+    m_timeAxisScroll = new QScrollArea(this);
+    m_timeAxisScroll->setWidgetResizable(true);
+    m_timeAxisScroll->setObjectName("timeAxisScroll");
     m_timeAxisWidget = new TimeAxis(this);
-    timeAxisScroll->setWidget(m_timeAxisWidget);
-    pageLayout->addWidget(timeAxisScroll);
+    m_timeAxisScroll->setWidget(m_timeAxisWidget);
+    pageLayout->addWidget(m_timeAxisScroll);
 
     connect(dateSelectBtn, &QPushButton::clicked, this, &DayView::showDateSelectDialog);
     connect(todayBtn, &QPushButton::clicked, this, &DayView::setToTodayDate);
@@ -112,26 +136,83 @@ DayView::~DayView(){
 
 }
 
+// 把标题行摆到分组框顶部：文字中心正对分组框上边线
+void DayView::layoutProgressHeader()
+{
+    if (!m_progressHeader) {
+        return;
+    }
+    QWidget *group = m_progressHeader->parentWidget();
+    if (!group) {
+        return;
+    }
+    m_progressHeader->setGeometry(0, 0, group->width(), m_progressHeader->sizeHint().height());
+}
+
+bool DayView::eventFilter(QObject *watched, QEvent *event)
+{
+    if (m_progressHeader && watched == m_progressHeader->parentWidget()
+        && (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
+        layoutProgressHeader();
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void DayView::setDate(const QDate &date)
+{
+    m_date = date;
+    m_selectedDateLabel->setText(QString("当前日期：%1").arg(m_date.toString("yyyy年MM月dd日")));
+    loadDateData(m_date);
+    updateDayViewStats();
+}
+
+// 时间轴起止小时变化后，重建整块时间轴
+void DayView::rebuildTimeAxis()
+{
+    auto *pageLayout = qobject_cast<QVBoxLayout*>(layout());
+    if (!pageLayout) {
+        return;
+    }
+
+    if (m_timeAxisScroll) {
+        pageLayout->removeWidget(m_timeAxisScroll);
+        delete m_timeAxisScroll;      // 连带里面的 TimeAxis 一起销毁
+        m_timeAxisScroll = nullptr;
+        m_timeAxisWidget = nullptr;
+    }
+
+    m_timeAxisScroll = new QScrollArea(this);
+    m_timeAxisScroll->setWidgetResizable(true);
+    m_timeAxisScroll->setObjectName("timeAxisScroll");
+    m_timeAxisWidget = new TimeAxis(this);
+    m_timeAxisScroll->setWidget(m_timeAxisWidget);
+    pageLayout->addWidget(m_timeAxisScroll);
+
+    loadDateData(m_date);
+}
+
 void DayView::updateDayViewStats()
 {
-    DateStudyData data = appDatas[DateHelper::currentDate()];
+    DateStudyData data = appDatas[m_date];
     int continuousDays = appDatas.calculateContinuousDays();
     appDatas.setMaxContinDays(qMax(appDatas.maxContinDays(), continuousDays));
-    m_todayStudyHourLabel->setText(QString("今日学习：%1小时 / <font color='#27AE60'>目标%2小时</font>").arg(data.studyHours).arg(appDatas.targetHour()));
+    m_todayStudyHourLabel->setText(QString("今日学习：%1小时 / <font color='%2'>目标%3小时</font>").arg(data.studyHours).arg(Theme::colors().success).arg(appDatas.targetHour()));
     m_todayStudyHourLabel->setTextFormat(Qt::RichText);
     if(data.studyHours >= appDatas.targetHour())
     {
-        m_dayProgressBar->setValue(appDatas.targetHour());
+        animateProgress(appDatas.targetHour());
     }
     else
     {
-        m_dayProgressBar->setValue(data.studyHours);
+        animateProgress(data.studyHours);
     }
 
     m_continuousDaysLabel->setText(QString("当前连续天数：%1").arg(continuousDays));
     m_maxContinuousDaysLabel->setText(QString("最长连续天数：%1").arg(appDatas.maxContinDays()));
     m_completedProjectsLabel->setText(QString("已完成项目：%1").arg(data.completedProjects));
     m_studyCheckLabel->setText(QString("学习打卡：%1/%2").arg(data.studyHours).arg(appDatas.targetHour()));
+
+    emit statsChanged();
 }
 
 void DayView::showDateSelectDialog()
@@ -146,43 +227,31 @@ void DayView::showDateSelectDialog()
     layout->setContentsMargins(15,15,15,15);
     layout->setSpacing(8);
     QCalendarWidget* calendar = new QCalendarWidget;
-    calendar->setSelectedDate(DateHelper::currentDate());
-    
-    // 设置日历控件样式，确保在深色主题下也能正常显示
-    calendar->setStyleSheet(
-        "QCalendarWidget { background-color: #FFFFFF; color: #333333; } "
-        "QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #2D8CF0; color: #FFFFFF; } "
-        "QCalendarWidget QAbstractItemView:enabled { background-color: #FFFFFF; color: #333333; selection-background-color: #2D8CF0; selection-color: #FFFFFF; } "
-        "QCalendarWidget QAbstractItemView:disabled { color: #CCCCCC; } "
-        "QCalendarWidget QToolButton { color: #FFFFFF; } "
-        "QCalendarWidget QSpinBox { background-color: #FFFFFF; color: #333333; border: 1px solid #CCCCCC; } "
-        "QCalendarWidget QSpinBox::up-button, QCalendarWidget QSpinBox::down-button { background-color: #F0F0F0; }"
-    );
+    calendar->setSelectedDate(m_date);
+    // 日历配色由统一主题表提供（QCalendarWidget 全局规则），此处不再写死颜色
 
     layout->addWidget(calendar);
 
     QPushButton* confirmBtn = new QPushButton("确定");
     layout->addWidget(confirmBtn, 0, Qt::AlignCenter);
     connect(confirmBtn, &QPushButton::clicked, [=](){
-        const QDate date = calendar->selectedDate();
-        DateHelper::setCurrentDate(date);
-        m_selectedDateLabel->setText(QString("当前日期：%1").arg(date.toString("yyyy年MM月dd日")));
-        loadDateData(DateHelper::currentDate());
-        updateDayViewStats();
-        qobject_cast<MonthView*>(widgetContainer("monthView"))->switchMonth(DateHelper::calcCaleMonthDiff(date));
+        setDate(calendar->selectedDate());
+        if (auto *mv = window() ? window()->findChild<MonthView*>("monthView") : nullptr) {
+            mv->showMonthOf(m_date);
+        }
         dialog->close();
     });
 
+    DialogAnimator::applyFadeSlideIn(dialog);
     dialog->exec();
 }
 
 void DayView::setToTodayDate()
 {
-    DateHelper::resetDate();
-    m_selectedDateLabel->setText(QString("当前日期：%1").arg(DateHelper::currentDate().toString("yyyy年MM月dd日")));
-    loadDateData(DateHelper::currentDate());
-    updateDayViewStats();
-    qobject_cast<MonthView*>(widgetContainer("monthView"))->switchMonth(0);
+    setDate(QDate::currentDate());
+    if (auto *mv = window() ? window()->findChild<MonthView*>("monthView") : nullptr) {
+        mv->setToCurrentMonth();
+    }
 }
 
 void DayView::showSetTargetDialog()
@@ -208,13 +277,13 @@ void DayView::showSetTargetDialog()
 
         connect(hourBtn, &QPushButton::clicked, [=](){
                 appDatas.setTargetHour(hour);
-                m_todayStudyHourLabel->setText(QString("今日学习：%1小时 / <font color='#27AE60'>目标%2小时</font>").arg(appDatas[DateHelper::currentDate()].studyHours).arg(appDatas.targetHour()));
+                m_todayStudyHourLabel->setText(QString("今日学习：%1小时 / <font color='%2'>目标%3小时</font>").arg(appDatas[m_date].studyHours).arg(Theme::colors().success).arg(appDatas.targetHour()));
                 m_todayStudyHourLabel->setTextFormat(Qt::RichText);
-                m_dayProgressBar->setRange(0,appDatas.targetHour());
-                if(appDatas[DateHelper::currentDate()].studyHours >= appDatas.targetHour())
-                    m_dayProgressBar->setValue(appDatas.targetHour());
+                m_dayProgressBar->setRange(0, appDatas.targetHour() * PROGRESS_SCALE);
+                if(appDatas[m_date].studyHours >= appDatas.targetHour())
+                    animateProgress(appDatas.targetHour());
                 else
-                    m_dayProgressBar->setValue(appDatas[DateHelper::currentDate()].studyHours);
+                    animateProgress(appDatas[m_date].studyHours);
                 m_dayProgressBar->update();
                 dialog->close();
                 dialog->deleteLater();
@@ -223,11 +292,6 @@ void DayView::showSetTargetDialog()
 
     QPushButton* cancelBtn = new QPushButton("取消");
     cancelBtn->setObjectName("cancelBtn");
-    // 设置与其他功能按钮一致的样式
-    cancelBtn->setStyleSheet(
-        "QPushButton{font-size:12px; font-weight:bold; padding:5px 12px; border-radius:6px; border:none; background-color:#FFFFFF; color:#333333;}"
-        "QPushButton:hover{background-color:#F8F9FA;}"
-        "QPushButton:pressed{background-color:#E9ECEF;}");
     QHBoxLayout* btnLayout = new QHBoxLayout;
     btnLayout->addStretch();
     btnLayout->addWidget(cancelBtn);
@@ -242,13 +306,14 @@ void DayView::showSetTargetDialog()
     // 处理对话框关闭事件
     connect(dialog, &QDialog::finished, dialog, &QDialog::deleteLater);
 
+    DialogAnimator::applyFadeSlideIn(dialog);
     dialog->exec();
 }
 
 void DayView::clearCurrentData()
 {
-    appDatas[DateHelper::currentDate()] = DateStudyData();
-    QList<int> hours = {8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
+    appDatas[m_date] = DateStudyData();
+    const QList<int> hours = appDatas.dayHours();
     for(int hour : hours)
     {
         QPushButton* btn = m_timeAxisWidget->operator[](hour);
@@ -257,9 +322,11 @@ void DayView::clearCurrentData()
         btn->setObjectName("unPlanned");
     }
     appDatas.saveDataToFile();
-    loadDateData(DateHelper::currentDate());
+    loadDateData(m_date);
     updateDayViewStats();
-    qobject_cast<MonthView*>(widgetContainer("monthView"))->switchMonth(0);
+    if (auto *mv = window() ? window()->findChild<MonthView*>("monthView") : nullptr) {
+        mv->generateMonthCalendar();
+    }
     QMessageBox::information(this, "提示", "当日数据已清除！");
 }
 
@@ -273,7 +340,7 @@ void DayView::loadDateData(const QDate& date)
     }
     DateStudyData data = appDatas[date];
 
-    QList<int> hours = {8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
+    const QList<int> hours = appDatas.dayHours();
     for(int hour : hours)
     {
         QPushButton* btn = m_timeAxisWidget->operator[](hour);
@@ -286,14 +353,36 @@ void DayView::loadDateData(const QDate& date)
         {
             btn->setText("未安排");
         }
-        btn->setStyle(QApplication::style());
+        // 文本变化后让 QSS 的 [text="..."] 属性选择器重新求值
+        Theme::repolish(btn);
     }
 }
 
-void DayView::setProgress(int hour){
-    m_dayProgressBar->setValue(hour);
-}
+void DayView::animateProgress(int targetHours)
+{
+    int scaledTarget = targetHours * PROGRESS_SCALE;
+    // 目标不能超过范围
+    int maxVal = m_dayProgressBar->maximum();
+    if (scaledTarget > maxVal) scaledTarget = maxVal;
+    if (scaledTarget < 0) scaledTarget = 0;
 
-void DayView::setProgressStyle(QString style){
-    m_dayProgressBar->setStyleSheet(style);
+    if (m_progressAnimation->state() == QAbstractAnimation::Running) {
+        m_progressAnimation->stop();
+    }
+    int currentValue = m_dayProgressBar->value();
+    m_progressAnimation->setStartValue(currentValue);
+    m_progressAnimation->setEndValue(scaledTarget);
+
+    // 根据数值变化方向选择缓动曲线：
+    // 增加 → 弹性回弹（OutElastic），减少 → 平滑缓出（OutCubic），避免回弹到0时生硬
+    if (scaledTarget >= currentValue) {
+        QEasingCurve elasticCurve(QEasingCurve::OutElastic);
+        elasticCurve.setAmplitude(1.0);
+        elasticCurve.setPeriod(0.4);
+        m_progressAnimation->setEasingCurve(elasticCurve);
+    } else {
+        m_progressAnimation->setEasingCurve(QEasingCurve::OutCubic);
+    }
+
+    m_progressAnimation->start();
 }

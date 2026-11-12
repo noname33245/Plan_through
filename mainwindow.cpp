@@ -1,13 +1,19 @@
 #include "datastruct.h"
-#include "utils/datehelper.h"
-#include "utils/widgetcontainer.h"
+#include "utils/dialoganimator.h"
+#include "utils/theme.h"
 #include "widgets/dayview.h"
 #include "widgets/monthview.h"
+#include "widgets/resizehandle.h"
+#include "widgets/settingsdialog.h"
 #include "mainwindow.h"
 #include "appdatas.h"
 #include "memreduct.h"
 #include <synchapi.h>
-
+#include <QShortcut>
+#include <QKeySequence>
+#include <QPainter>
+#include <QPixmap>
+#include <QTime>
 
 
 MainWindow::MainWindow(bool isAutoStart, QWidget *parent)
@@ -19,12 +25,11 @@ MainWindow::MainWindow(bool isAutoStart, QWidget *parent)
     // 设置窗口图标
     this->setWindowIcon(QIcon(":/16.ico"));
     
-    widgetContainer("main", this);
     initUI();
     applyTheme(appDatas.themeType());
     initSystemTray();
     // 初始化日视图和月视图数据
-    findChild<DayView*>("dayView")->loadDateData(DateHelper::currentDate());
+    findChild<DayView*>("dayView")->loadDateData(QDate::currentDate());
     findChild<DayView*>("dayView")->updateDayViewStats();
     findChild<MonthView*>("monthView")->generateMonthCalendar();
 
@@ -52,10 +57,17 @@ MainWindow::MainWindow(bool isAutoStart, QWidget *parent)
         Sleep(10);
         this->hide();
     } else {
-        // 手动打开时，显示窗口
+        // 手动打开时，显示窗口 + 淡入动画
+        this->setWindowOpacity(0.0);
         this->showNormal();
         this->raise();
         this->activateWindow();
+        QPropertyAnimation *fadeIn = new QPropertyAnimation(this, "windowOpacity");
+        fadeIn->setDuration(280);
+        fadeIn->setStartValue(0.0);
+        fadeIn->setEndValue(1.0);
+        fadeIn->setEasingCurve(QEasingCurve::OutCubic);
+        fadeIn->start(QAbstractAnimation::DeleteWhenStopped);
     }
     
     // 初始化自动内存清理定时器
@@ -73,6 +85,14 @@ MainWindow::MainWindow(bool isAutoStart, QWidget *parent)
     } else {
         m_memoryCleanTimer->stop();
     }
+
+    // 今日完成度变化时刷新托盘图标
+    connect(m_dayView, &DayView::statsChanged, this, &MainWindow::updateTrayIcon);
+
+    // 每日提醒：20 秒轮询一次，靠日期去重保证一天只提醒一次
+    m_reminderTimer = new QTimer(this);
+    connect(m_reminderTimer, &QTimer::timeout, this, &MainWindow::checkReminder);
+    m_reminderTimer->start(20 * 1000);
 }
 
 // 析构函数，释放所有动态分配的资源
@@ -91,11 +111,14 @@ MainWindow::~MainWindow()
 }
 
 // 应用主题样式
-// @param themeType 主题类型，0表示默认主题，1表示深色主题
+// @param themeType 主题类型：0 纯净白（浅色），1 灰黑（深色），2 跟随系统
 void MainWindow::applyTheme(int themeType)
 {
     appDatas.setTheme(themeType);
-    this->setStyleSheet(loadQss(themeType));
+    // 只切换配色方案，样式表与调色板统一由 Theme 下发到 QApplication，
+    // 这样 parent 为空的对话框、弹出菜单也会一起变色
+    Theme::setTheme(themeType);
+    Theme::applyToApplication();
     findChild<DayView*>("dayView")->updateDayViewStats();
 }
 
@@ -106,14 +129,8 @@ void MainWindow::initSystemTray()
     m_systemTrayIcon->setIcon(QIcon(":/16.ico"));
     m_systemTrayIcon->setToolTip("学习计划打卡");
 
-    // 创建托盘菜单
+    // 创建托盘菜单（外观由全局 QMenu 样式统一控制，不再单独写死颜色）
     m_trayMenu = new QMenu(this);
-    m_trayMenu->setStyleSheet(
-        "QMenu{background-color:#FFFFFF; border:1px solid #EEEEEE; border-radius:6px; padding:3px 0px;}"
-        "QMenu::item{color:#000000; font-size:12px; padding:4px 30px 4px 15px; margin:1px 3px; border-radius:3px;}"
-        "QMenu::item:selected{background-color:#ECF5FF; color:#000000;}"
-        "QMenu::separator{height:1px; background-color:#EEEEEE; margin:3px 0px;}"
-    );
 
     // 添加托盘菜单选项
     QAction *showAct = new QAction("显示窗口", this);
@@ -127,6 +144,96 @@ void MainWindow::initSystemTray()
     m_systemTrayIcon->setContextMenu(m_trayMenu);
     m_systemTrayIcon->show();
     connect(m_systemTrayIcon, &QSystemTrayIcon::activated, this, &MainWindow::onTrayIconClicked);
+
+    updateTrayIcon();
+}
+
+// 把今日完成度画进托盘图标：外圈进度环 + 中心程序图标
+void MainWindow::updateTrayIcon()
+{
+    if (!m_systemTrayIcon) {
+        return;
+    }
+
+    const Theme::Colors &tc = Theme::colors();
+    const QDate today = QDate::currentDate();
+    const int hours = appDatas.value(today).studyHours;
+    const int target = qMax(1, appDatas.targetHour());
+    const double ratio = qBound(0.0, double(hours) / double(target), 1.0);
+
+    QPixmap pm(64, 64);
+    pm.fill(Qt::transparent);
+    {
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        const QRectF ring(4.0, 4.0, 56.0, 56.0);
+
+        QPen track(QColor(tc.borderSoft));
+        track.setWidth(7);
+        track.setCapStyle(Qt::RoundCap);
+        p.setPen(track);
+        p.drawEllipse(ring);
+
+        if (ratio > 0.0) {
+            QPen arc(QColor(ratio >= 1.0 ? tc.success : tc.accent));
+            arc.setWidth(7);
+            arc.setCapStyle(Qt::RoundCap);
+            p.setPen(arc);
+            p.drawArc(ring, 90 * 16, -int(ratio * 360 * 16));
+        }
+
+        const QPixmap icon(":/16.ico");
+        if (!icon.isNull()) {
+            p.drawPixmap(QRect(19, 19, 26, 26), icon);
+        }
+    }
+    m_systemTrayIcon->setIcon(QIcon(pm));
+    m_systemTrayIcon->setToolTip(
+        QString("学习计划打卡\n今日 %1 / %2 小时").arg(hours).arg(target));
+    m_lastTrayDate = today;
+}
+
+// 到点检查：今天还没达标就发一条托盘通知，一天只提醒一次
+void MainWindow::checkReminder()
+{
+    // 跨天后托盘进度需要归零
+    const QDate today = QDate::currentDate();
+    if (m_lastTrayDate.isValid() && m_lastTrayDate != today) {
+        updateTrayIcon();
+    }
+
+    if (!appDatas.isReminderEnabled() || !m_systemTrayIcon) {
+        return;
+    }
+
+    const QTime target = QTime::fromString(appDatas.reminderTime(), "HH:mm");
+    if (!target.isValid()) {
+        return;
+    }
+
+    if (m_lastReminderDate == today) {
+        return;
+    }
+
+    // 到点后 10 分钟内都算有效，避免定时器刚好错过那一分钟
+    const int diff = target.secsTo(QTime::currentTime());
+    if (diff < 0 || diff > 600) {
+        return;
+    }
+
+    const int hours = appDatas.value(today).studyHours;
+    const int goal = appDatas.targetHour();
+    if (hours >= goal) {
+        return;
+    }
+
+    m_lastReminderDate = today;
+    m_systemTrayIcon->showMessage(
+        "今日还没达标",
+        QString("已学习 %1 小时 / 目标 %2 小时，还差 %3 小时")
+            .arg(hours).arg(goal).arg(goal - hours),
+        QSystemTrayIcon::Information, 10000);
 }
 
 // 系统托盘图标点击事件处理
@@ -142,640 +249,182 @@ void MainWindow::onTrayIconClicked(QSystemTrayIcon::ActivationReason reason)
 // 从系统托盘显示窗口
 void MainWindow::showWindowFromTray()
 {
+    this->setWindowOpacity(0.0);
     this->show();
     this->activateWindow();
     this->raise();
+    QPropertyAnimation *fadeIn = new QPropertyAnimation(this, "windowOpacity");
+    fadeIn->setDuration(220);
+    fadeIn->setStartValue(0.0);
+    fadeIn->setEndValue(1.0);
+    fadeIn->setEasingCurve(QEasingCurve::OutCubic);
+    fadeIn->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+// 视图切换（日/月），带淡出 + 滑入动画
+// @param targetIndex 0 = 日视图，1 = 月视图
+void MainWindow::switchToView(int targetIndex)
+{
+    if (m_isAnimating) {
+        return;
+    }
+
+    const bool toDay = (targetIndex == 0);
+
+    // 已经在目标视图：只对齐按钮状态并刷新数据
+    if (m_mainStackedWidget->currentIndex() == targetIndex) {
+        m_dayViewBtn->setChecked(toDay);
+        m_monthViewBtn->setChecked(!toDay);
+        if (toDay) {
+            findChild<DayView*>("dayView")->updateDayViewStats();
+        } else {
+            findChild<MonthView*>("monthView")->generateMonthCalendar();
+        }
+        return;
+    }
+
+    QWidget *currentWidget = m_mainStackedWidget->currentWidget();
+    if (!currentWidget) {
+        return;
+    }
+
+    m_isAnimating = true;
+
+    // 日视图在左、月视图在右：新页面从对应一侧滑入，旧页面往反方向滑出
+    const int enterDir = toDay ? -1 : 1;
+    const QPoint originalPos = currentWidget->pos();
+
+    // 退出动画：只做前半段，在速度最快时切换页面
+    auto *exitGroup = new QParallelAnimationGroup(this);
+
+    auto *fadeOut = new QPropertyAnimation(currentWidget, "windowOpacity");
+    fadeOut->setDuration(250);
+    fadeOut->setEasingCurve(QEasingCurve::InCubic);
+    fadeOut->setStartValue(1.0);
+    fadeOut->setEndValue(0.5);
+
+    auto *slideOut = new QPropertyAnimation(currentWidget, "pos");
+    slideOut->setDuration(250);
+    slideOut->setEasingCurve(QEasingCurve::InCubic);
+    slideOut->setStartValue(originalPos);
+    slideOut->setEndValue(originalPos - QPoint(enterDir * 30, 0));
+
+    exitGroup->addAnimation(fadeOut);
+    exitGroup->addAnimation(slideOut);
+
+    connect(exitGroup, &QParallelAnimationGroup::finished, this, [=]() {
+        m_mainStackedWidget->setCurrentIndex(targetIndex);
+
+        // 还原旧页面
+        currentWidget->move(originalPos);
+        currentWidget->setWindowOpacity(1.0);
+
+        QWidget *newWidget = m_mainStackedWidget->currentWidget();
+        if (!newWidget) {
+            m_isAnimating = false;
+            return;
+        }
+
+        const QPoint newOriginalPos = newWidget->pos();
+        const QPoint newStartPos = newOriginalPos + QPoint(enterDir * 30, 0);
+
+        // 进入动画：后半段
+        newWidget->setWindowOpacity(0.5);
+        newWidget->move(newStartPos);
+
+        auto *enterGroup = new QParallelAnimationGroup(this);
+
+        auto *fadeIn = new QPropertyAnimation(newWidget, "windowOpacity");
+        fadeIn->setDuration(250);
+        fadeIn->setEasingCurve(QEasingCurve::OutCubic);
+        fadeIn->setStartValue(0.5);
+        fadeIn->setEndValue(1.0);
+
+        auto *slideIn = new QPropertyAnimation(newWidget, "pos");
+        slideIn->setDuration(250);
+        slideIn->setEasingCurve(QEasingCurve::OutCubic);
+        slideIn->setStartValue(newStartPos);
+        slideIn->setEndValue(newOriginalPos);
+
+        enterGroup->addAnimation(fadeIn);
+        enterGroup->addAnimation(slideIn);
+
+        connect(enterGroup, &QParallelAnimationGroup::finished, this, [=]() {
+            newWidget->move(newOriginalPos);
+            newWidget->setWindowOpacity(1.0);
+
+            // 最终保障：按钮状态与当前页面保持一致
+            m_dayViewBtn->setChecked(toDay);
+            m_monthViewBtn->setChecked(!toDay);
+            if (toDay) {
+                findChild<DayView*>("dayView")->updateDayViewStats();
+            } else {
+                findChild<MonthView*>("monthView")->generateMonthCalendar();
+            }
+
+            m_isAnimating = false;
+        });
+
+        enterGroup->start(QAbstractAnimation::DeleteWhenStopped);
+    });
+
+    exitGroup->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 // 切换到日视图
 void MainWindow::switchToDayView()
 {
-    if (m_isAnimating) {
-        return;
-    }
-    
-    if (m_mainStackedWidget->currentIndex() == 0) {
-        // 已经在日视图，确保按钮状态正确
-        m_dayViewBtn->setChecked(true);
-        m_monthViewBtn->setChecked(false);
-        findChild<DayView*>("dayView")->updateDayViewStats();
-        return;
-    }
-    
-    m_isAnimating = true;
-    
-    QWidget *currentWidget = m_mainStackedWidget->currentWidget();
-    if (!currentWidget) {
-        m_isAnimating = false;
-        return;
-    }
-    
-    QPoint originalPos = currentWidget->pos();
-    
-    // 创建退出动画 - 只执行一半（快→慢阶段）
-    QParallelAnimationGroup *exitGroup = new QParallelAnimationGroup(this);
-    
-    QPropertyAnimation *fadeOutAnim = new QPropertyAnimation(currentWidget, "windowOpacity");
-        fadeOutAnim->setDuration(250); // 总动画时长的一半
-        fadeOutAnim->setEasingCurve(QEasingCurve::InCubic); // 慢→快的缓动曲线
-        fadeOutAnim->setStartValue(1.0);
-        fadeOutAnim->setEndValue(0.5); // 只淡出到半透明
-        
-        QPropertyAnimation *slideOutAnim = new QPropertyAnimation(currentWidget, "pos");
-        slideOutAnim->setDuration(250);
-        slideOutAnim->setEasingCurve(QEasingCurve::InCubic); // 慢→快的缓动曲线
-        slideOutAnim->setStartValue(originalPos);
-        slideOutAnim->setEndValue(QPoint(originalPos.x() + 30, originalPos.y())); // 只滑动一半距离
-    
-    exitGroup->addAnimation(fadeOutAnim);
-    exitGroup->addAnimation(slideOutAnim);
-    
-    connect(exitGroup, &QParallelAnimationGroup::finished, this, [=]() {
-        // 在速度最快时（动画中点）切换页面
-        m_mainStackedWidget->setCurrentIndex(0);
-        
-        // 恢复当前控件状态
-        currentWidget->move(originalPos);
-        currentWidget->setWindowOpacity(1.0);
-        
-        QWidget *newWidget = m_mainStackedWidget->currentWidget();
-        if (!newWidget) {
-            m_isAnimating = false;
-            return;
-        }
-        
-        QPoint newOriginalPos = newWidget->pos();
-        
-        // 月视图→日视图：日视图从左滑入
-        QPoint newStartPos = newOriginalPos - QPoint(30, 0);
-        
-        newWidget->setWindowOpacity(0.5); // 从半透明开始
-        newWidget->move(newStartPos);
-        
-        // 执行进入动画的后半段（慢→快阶段）
-        QParallelAnimationGroup *enterGroup = new QParallelAnimationGroup(this);
-        
-        QPropertyAnimation *fadeInAnim = new QPropertyAnimation(newWidget, "windowOpacity");
-        fadeInAnim->setDuration(250);
-        fadeInAnim->setEasingCurve(QEasingCurve::OutCubic); // 快→慢的缓动曲线
-        fadeInAnim->setStartValue(0.5);
-        fadeInAnim->setEndValue(1.0);
-        
-        QPropertyAnimation *slideInAnim = new QPropertyAnimation(newWidget, "pos");
-        slideInAnim->setDuration(250);
-        slideInAnim->setEasingCurve(QEasingCurve::OutCubic); // 快→慢的缓动曲线
-        slideInAnim->setStartValue(newStartPos);
-        slideInAnim->setEndValue(newOriginalPos);
-        
-        enterGroup->addAnimation(fadeInAnim);
-        enterGroup->addAnimation(slideInAnim);
-        
-        connect(enterGroup, &QParallelAnimationGroup::finished, this, [=]() {
-            newWidget->move(newOriginalPos);
-            newWidget->setWindowOpacity(1.0);
-            
-            // 最终保障：强制设置正确的按钮状态
-            // 日视图显示 → 日视图按钮必须为checked，月视图按钮必须为unchecked
-            m_dayViewBtn->setChecked(true);
-            m_monthViewBtn->setChecked(false);
-            findChild<DayView*>("dayView")->updateDayViewStats();
-            
-            m_isAnimating = false;
-        });
-        
-        enterGroup->start(QAbstractAnimation::DeleteWhenStopped);
-        exitGroup->deleteLater();
-    });
-    
-    exitGroup->start(QAbstractAnimation::DeleteWhenStopped);
+    switchToView(0);
 }
 
 // 切换到月视图
 void MainWindow::switchToMonthView()
 {
-    if (m_isAnimating) {
-        return;
-    }
-    
-    if (m_mainStackedWidget->currentIndex() == 1) {
-        // 已经在月视图，确保按钮状态正确
-        m_monthViewBtn->setChecked(true);
-        m_dayViewBtn->setChecked(false);
-        findChild<MonthView*>("monthView")->generateMonthCalendar();
-        return;
-    }
-    
-    m_isAnimating = true;
-    
-    QWidget *currentWidget = m_mainStackedWidget->currentWidget();
-    if (!currentWidget) {
-        m_isAnimating = false;
-        return;
-    }
-    
-    QPoint originalPos = currentWidget->pos();
-    
-    // 创建退出动画 - 只执行一半（快→慢阶段）
-    QParallelAnimationGroup *exitGroup = new QParallelAnimationGroup(this);
-    
-    QPropertyAnimation *fadeOutAnim = new QPropertyAnimation(currentWidget, "windowOpacity");
-        fadeOutAnim->setDuration(250); // 总动画时长的一半
-        fadeOutAnim->setEasingCurve(QEasingCurve::InCubic); // 慢→快的缓动曲线
-        fadeOutAnim->setStartValue(1.0);
-        fadeOutAnim->setEndValue(0.5); // 只淡出到半透明
-        
-        QPropertyAnimation *slideOutAnim = new QPropertyAnimation(currentWidget, "pos");
-        slideOutAnim->setDuration(250);
-        slideOutAnim->setEasingCurve(QEasingCurve::InCubic); // 慢→快的缓动曲线
-        slideOutAnim->setStartValue(originalPos);
-        slideOutAnim->setEndValue(QPoint(originalPos.x() - 30, originalPos.y())); // 只滑动一半距离
-    
-    exitGroup->addAnimation(fadeOutAnim);
-    exitGroup->addAnimation(slideOutAnim);
-    
-    connect(exitGroup, &QParallelAnimationGroup::finished, this, [=]() {
-        // 在速度最快时（动画中点）切换页面
-        m_mainStackedWidget->setCurrentIndex(1);
-        
-        // 恢复当前控件状态
-        currentWidget->move(originalPos);
-        currentWidget->setWindowOpacity(1.0);
-        
-        QWidget *newWidget = m_mainStackedWidget->currentWidget();
-        if (!newWidget) {
-            m_isAnimating = false;
-            return;
-        }
-        
-        QPoint newOriginalPos = newWidget->pos();
-        
-        // 日视图→月视图：月视图从右滑入
-        QPoint newStartPos = newOriginalPos + QPoint(30, 0);
-        
-        newWidget->setWindowOpacity(0.5); // 从半透明开始
-        newWidget->move(newStartPos);
-        
-        // 执行进入动画的后半段（慢→快阶段）
-        QParallelAnimationGroup *enterGroup = new QParallelAnimationGroup(this);
-        
-        QPropertyAnimation *fadeInAnim = new QPropertyAnimation(newWidget, "windowOpacity");
-        fadeInAnim->setDuration(250);
-        fadeInAnim->setEasingCurve(QEasingCurve::OutCubic); // 快→慢的缓动曲线
-        fadeInAnim->setStartValue(0.5);
-        fadeInAnim->setEndValue(1.0);
-        
-        QPropertyAnimation *slideInAnim = new QPropertyAnimation(newWidget, "pos");
-        slideInAnim->setDuration(250);
-        slideInAnim->setEasingCurve(QEasingCurve::OutCubic); // 快→慢的缓动曲线
-        slideInAnim->setStartValue(newStartPos);
-        slideInAnim->setEndValue(newOriginalPos);
-        
-        enterGroup->addAnimation(fadeInAnim);
-        enterGroup->addAnimation(slideInAnim);
-        
-        connect(enterGroup, &QParallelAnimationGroup::finished, this, [=]() {
-            newWidget->move(newOriginalPos);
-            newWidget->setWindowOpacity(1.0);
-            
-            // 最终保障：强制设置正确的按钮状态
-            // 月视图显示 → 月视图按钮必须为checked，日视图按钮必须为unchecked
-            m_monthViewBtn->setChecked(true);
-            m_dayViewBtn->setChecked(false);
-            findChild<MonthView*>("monthView")->generateMonthCalendar();
-            
-            m_isAnimating = false;
-        });
-        
-        enterGroup->start(QAbstractAnimation::DeleteWhenStopped);
-        exitGroup->deleteLater();
-    });
-    
-    exitGroup->start(QAbstractAnimation::DeleteWhenStopped);
+    switchToView(1);
 }
 
 // 显示设置窗口
 void MainWindow::showSettingsWindow()
 {
-    QDialog *settingsDlg = new QDialog(this);
-    settingsDlg->setWindowTitle("软件设置");
-    settingsDlg->setFixedSize(350, 560);
-    settingsDlg->setModal(true);
-    
-    // 禁用所有可能的窗口动画效果
-    settingsDlg->setAttribute(Qt::WA_NoSystemBackground, false);
-    settingsDlg->setAttribute(Qt::WA_DontShowOnScreen, false);
-    settingsDlg->setAttribute(Qt::WA_TranslucentBackground, false);
-    settingsDlg->setWindowOpacity(1.0);
+    SettingsDialog dlg(this);
 
-    // 设置对话框样式
-    settingsDlg->setStyleSheet(
-        "QDialog{background-color:#FFFFFF; border-radius:10px; border:1px solid #EEEEEE;}"
-        "QLabel{font-size:12px; color:#000000; font-weight:normal;}"
-        "QCheckBox{font-size:12px; color:#000000; padding:3px; background-color:transparent;}"
-        "QCheckBox::indicator{width:14px;height:14px;border:1px solid #CCCCCC;border-radius:2px;background-color:#FFFFFF;}"
-        "QCheckBox::indicator:checked{background-color:#2D8CF0;border-color:#2D8CF0;}"
-        "QComboBox{font-size:12px; color:#000000; height:26px; padding:0 6px; border:1px solid #DDDDDD; border-radius:4px; background-color:#FFFFFF;}"
-        "QComboBox::drop-down{border:none;}"
-        "QComboBox::down-arrow{width:10px;height:10px;}"
-        "QComboBox QAbstractItemView{background-color:#FFFFFF; color:#000000; border:1px solid #DDDDDD; selection-background-color:#ECF5FF; selection-color:#000000;}"
-        "QPushButton{font-size:12px; padding:4px 10px; border-radius:4px; border:none; color:#FFFFFF;}"
-        "QPushButton:hover{opacity:0.9;}"
-        "QPushButton:pressed{opacity:0.8;}"
-    );
-
-    QVBoxLayout *mainLayout = new QVBoxLayout(settingsDlg);
-    mainLayout->setSpacing(12);
-    mainLayout->setContentsMargins(15, 15, 15, 15);
-
-    // 开机自启设置
-    QHBoxLayout *autoStartLayout = new QHBoxLayout;
-    QCheckBox *autoStartCb = new QCheckBox("开机自动启动");
-    connect(autoStartCb, &QCheckBox::checkStateChanged, this, &MainWindow::onAutoStartupChanged);
-    {
-        QSignalBlocker blocker(autoStartCb);
-        autoStartCb->setChecked(appDatas.isAutoStartup());
-    }
-    autoStartLayout->addWidget(autoStartCb);
-    autoStartLayout->addStretch();
-
-    // 关闭窗口后最小化到托盘设置
-    QHBoxLayout *minTrayLayout = new QHBoxLayout;
-    QCheckBox *minTrayCb = new QCheckBox("关闭窗口后最小化到托盘");
-    connect(minTrayCb, &QCheckBox::checkStateChanged, this, &MainWindow::onMinToTrayChanged);
-    {
-        QSignalBlocker blocker(minTrayCb);
-        minTrayCb->setChecked(appDatas.isMinToTray());
-    }
-    minTrayLayout->addWidget(minTrayCb);
-    minTrayLayout->addStretch();
-
-    // 主题设置
-    QHBoxLayout *themeLayout = new QHBoxLayout;
-    QLabel *themeLab = new QLabel("软件主题：");
-    QComboBox *themeCbx = new QComboBox;
-    themeCbx->addItems({"简约灰", "纯净白"});
-    {
-        QSignalBlocker blocker(themeCbx);
-        themeCbx->setCurrentIndex(appDatas.themeType());
-    }
-    themeLayout->addWidget(themeLab);
-    themeLayout->addWidget(themeCbx);
-    themeLayout->addStretch();
-    connect(themeCbx, &QComboBox::currentIndexChanged, this, &MainWindow::onThemeChanged);
-    
-    // 默认视图设置
-    QHBoxLayout *defaultViewLayout = new QHBoxLayout;
-    QLabel *defaultViewLab = new QLabel("默认视图：");
-    QComboBox *defaultViewCbx = new QComboBox;
-    defaultViewCbx->addItems({"月视图", "日视图"});
-    defaultViewCbx->setCurrentIndex(appDatas.defaultViewType());
-    defaultViewLayout->addWidget(defaultViewLab);
-    defaultViewLayout->addWidget(defaultViewCbx);
-    defaultViewLayout->addStretch();
-    connect(defaultViewCbx, &QComboBox::currentIndexChanged, [=](int index) {
-        appDatas.setDefaultViewType(index);
-    });
-
-    // 打开存档文件位置
-    QHBoxLayout *pathLayout = new QHBoxLayout;
-    QPushButton *pathBtn = new QPushButton("打开存档文件位置");
-    pathBtn->setStyleSheet("background-color:#2D8CF0;");
-    pathLayout->addWidget(pathBtn);
-    pathLayout->addStretch();
-    connect(pathBtn, &QPushButton::clicked, this, &MainWindow::openSavePath);
-
-    // 打开日志文件位置
-    QHBoxLayout *logLayout = new QHBoxLayout;
-    QPushButton *logBtn = new QPushButton("打开日志文件位置");
-    logBtn->setStyleSheet("background-color:#F59E0B;");
-    logLayout->addWidget(logBtn);
-    logLayout->addStretch();
-    connect(logBtn, &QPushButton::clicked, this, &MainWindow::openLogPath);
-
-    // 微软商店评分和GitHub下载
-    QWidget *rateContainer = new QWidget;
-    rateContainer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    rateContainer->setFixedWidth(320);
-
-    QVBoxLayout *rateLayout = new QVBoxLayout(rateContainer);
-    rateLayout->setContentsMargins(0, 0, 0, 0);
-    rateLayout->setSpacing(4);
-    
-    // 按钮布局
-    QHBoxLayout *buttonsLayout = new QHBoxLayout;
-    buttonsLayout->setSpacing(8);
-    QPushButton *rateBtn = new QPushButton("微软商店好评支持一下吧 ❤️");
-    rateBtn->setStyleSheet("background-color:#27AE60;");
-    rateBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    buttonsLayout->addWidget(rateBtn);
-    
-    QPushButton *githubBtn = new QPushButton("GitHub 下载页面");
-    githubBtn->setStyleSheet("background-color:#3498DB;");
-    githubBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    buttonsLayout->addWidget(githubBtn);
-    
-    // 说明文字
-    QLabel *downloadNoteLabel = new QLabel("如果微软商城下载的版本无法使用内存清理功能，请先尝试使用管理员打开，如果失败则从github下载软件包");
-    downloadNoteLabel->setStyleSheet("font-size:10px; color:#666666;");
-    downloadNoteLabel->setWordWrap(true);
-    downloadNoteLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    downloadNoteLabel->setMinimumWidth(320);
-    downloadNoteLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    
-    // 添加到布局
-    rateLayout->addLayout(buttonsLayout);
-    rateLayout->addWidget(downloadNoteLabel);
-    
-    connect(rateBtn, &QPushButton::clicked, this, &MainWindow::goToMsStoreRate);
-    connect(githubBtn, &QPushButton::clicked, this, &MainWindow::goToGithubReleases);
-
-    // 自动内存清理设置
-    QGroupBox *autoMemoryCleanGroup = new QGroupBox("自动内存清理");
-    autoMemoryCleanGroup->setStyleSheet(
-        "QGroupBox{font-size:13px; font-weight:bold; color:#000000; margin-top:10px;}"
-        "QGroupBox::title{subcontrol-origin: margin; left: 10px; padding: 0 5px 0 5px;}"
-    );
-    // 固定自动清理分组的高度，避免内部 QLabel 文本变化引起布局抖动
-    autoMemoryCleanGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    autoMemoryCleanGroup->setMinimumHeight(165);
-
-    QVBoxLayout *autoMemoryCleanLayout = new QVBoxLayout(autoMemoryCleanGroup);
-    autoMemoryCleanLayout->setContentsMargins(12, 14, 12, 10);
-    autoMemoryCleanLayout->setSpacing(6);
-
-    // 启用自动内存清理勾选框
-    QHBoxLayout *enableAutoCleanLayout = new QHBoxLayout;
-    enableAutoCleanLayout->setSpacing(6);
-    QCheckBox *enableAutoCleanCb = new QCheckBox("启用自动内存清理");
-    enableAutoCleanCb->setChecked(appDatas.isAutoMemoryCleanEnabled());
-    enableAutoCleanCb->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    enableAutoCleanLayout->addWidget(enableAutoCleanCb);
-    enableAutoCleanLayout->addStretch();
-    
-    // 检测间隔下拉框
-    QHBoxLayout *intervalLayout = new QHBoxLayout;
-    intervalLayout->setSpacing(6);
-    QLabel *intervalLab = new QLabel("检测间隔：");
-    intervalLab->setMinimumWidth(60);
-    QComboBox *intervalCbx = new QComboBox;
-    intervalCbx->addItems({"1分钟", "2分钟", "5分钟", "10分钟", "15分钟", "20分钟", "25分钟", "30分钟"});
-    intervalCbx->setMinimumWidth(120);
-    // 根据appdatas中的设置初始化
-    int interval = appDatas.memoryCleanInterval();
-    int intervalIndex = 0;
-    if (interval == 1) intervalIndex = 0;
-    else if (interval == 2) intervalIndex = 1;
-    else if (interval >= 5 && interval <= 30) intervalIndex = qMax(2, qMin(7, 2 + (interval / 5) - 1));
-    else intervalIndex = 1; // 默认2分钟
-    intervalCbx->setCurrentIndex(intervalIndex);
-    intervalLayout->addWidget(intervalLab);
-    intervalLayout->addWidget(intervalCbx);
-    intervalLayout->addStretch();
-    
-    // 内存阈值下拉框
-    QHBoxLayout *thresholdLayout = new QHBoxLayout;
-    thresholdLayout->setSpacing(6);
-    QLabel *thresholdLab = new QLabel("内存阈值：");
-    thresholdLab->setMinimumWidth(60);
-    QComboBox *thresholdCbx = new QComboBox;
-    thresholdCbx->addItems({"30%", "40%", "50%", "60%", "70%", "80%", "90%"});
-    thresholdCbx->setMinimumWidth(120);
-    // 根据appdatas中的设置初始化
-    int threshold = appDatas.memoryCleanThreshold();
-    int thresholdIndex = qMax(0, qMin(6, (threshold / 10) - 3));
-    thresholdCbx->setCurrentIndex(thresholdIndex);
-    thresholdLayout->addWidget(thresholdLab);
-    thresholdLayout->addWidget(thresholdCbx);
-    thresholdLayout->addStretch();
-    
-    // 下次扫描内存倒计时和当前内存使用率
-    QHBoxLayout *nextScanLayout = new QHBoxLayout;
-    nextScanLayout->setSpacing(6);
-    QLabel *nextScanLab = new QLabel("下次扫描：");
-    nextScanLab->setMinimumWidth(60);
-    QLabel *nextScanTimeLab = new QLabel("--:--:--");
-    nextScanTimeLab->setMinimumWidth(60);
-    nextScanTimeLab->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    QLabel *memoryUsageLab = new QLabel("当前内存：--%");
-    memoryUsageLab->setMinimumWidth(90);
-    nextScanLayout->addWidget(nextScanLab);
-    nextScanLayout->addWidget(nextScanTimeLab);
-    nextScanLayout->addStretch();
-    nextScanLayout->addWidget(memoryUsageLab);
-    
-    // 添加到自动内存清理布局
-    autoMemoryCleanLayout->addLayout(enableAutoCleanLayout);
-    autoMemoryCleanLayout->addLayout(intervalLayout);
-    autoMemoryCleanLayout->addLayout(thresholdLayout);
-    autoMemoryCleanLayout->addLayout(nextScanLayout);
-    
-    // 创建倒计时更新定时器
-    QTimer *countdownTimer = new QTimer(settingsDlg);
-    int updateCount = 0;
-    connect(countdownTimer, &QTimer::timeout, [=, &updateCount]() {
-        // 禁用更新，避免在一次 tick 内多次 setText 触发布局重算导致 QGroupBox 抖动
-        settingsDlg->setUpdatesEnabled(false);
-
-        // 每秒更新一次下次扫描时间
-        if (m_isAutoMemoryCleanEnabled && m_memoryCleanTimer->isActive()) {
-            // 计算剩余时间
-            int remainingTime = m_memoryCleanTimer->remainingTime() / 1000;
-            int hours = remainingTime / 3600;
-            int minutes = (remainingTime % 3600) / 60;
-            int seconds = remainingTime % 60;
-            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
-        } else {
-            nextScanTimeLab->setText("已禁用");
+    // 倒计时显示需要读取主窗口的清理定时器
+    dlg.setRemainingSecondsProvider([this]() -> int {
+        if (!m_memoryCleanTimer || !m_memoryCleanTimer->isActive()) {
+            return -1;
         }
-        
-        // 每2秒更新一次内存使用率
-        updateCount++;
-        if (updateCount % 2 == 0) {
-            int memoryUsage = GetCurrentMemoryUsage();
-            memoryUsageLab->setText(QString("当前内存：%1%").arg(memoryUsage));
-        }
-
-        settingsDlg->setUpdatesEnabled(true);
-    });
-    countdownTimer->start(1000); // 每秒更新一次
-    
-    // 连接自动内存清理设置的信号槽
-    connect(enableAutoCleanCb, &QCheckBox::checkStateChanged, [=](Qt::CheckState state) {
-        bool enabled = (state == Qt::Checked);
-        appDatas.setAutoMemoryCleanEnabled(enabled);
-        m_isAutoMemoryCleanEnabled = enabled;
-        if (enabled) {
-            // 启动定时器
-            int intervalMinutes = appDatas.memoryCleanInterval();
-            m_memoryCleanTimer->start(intervalMinutes * 60 * 1000);
-            // 更新倒计时显示
-            int totalSeconds = intervalMinutes * 60;
-            int hours = totalSeconds / 3600;
-            int minutes = (totalSeconds % 3600) / 60;
-            int seconds = totalSeconds % 60;
-            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
-        } else {
-            // 停止定时器
-            m_memoryCleanTimer->stop();
-            // 更新倒计时显示
-            nextScanTimeLab->setText("已禁用");
-        }
-    });
-    
-    // 当检测间隔改变时，更新倒计时显示
-    connect(intervalCbx, &QComboBox::currentIndexChanged, [=](int index) {
-        // 1, 2, 5, 10, 15, 20, 25, 30分钟
-        int intervals[] = {1, 2, 5, 10, 15, 20, 25, 30};
-        int newInterval = intervals[index];
-        appDatas.setMemoryCleanInterval(newInterval);
-        m_memoryCleanInterval = newInterval;
-        // 如果自动清理已启用，更新定时器和倒计时显示
-        if (appDatas.isAutoMemoryCleanEnabled()) {
-            m_memoryCleanTimer->start(newInterval * 60 * 1000);
-            int totalSeconds = newInterval * 60;
-            int hours = totalSeconds / 3600;
-            int minutes = (totalSeconds % 3600) / 60;
-            int seconds = totalSeconds % 60;
-            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
-        }
-    });
-    
-    // 初始化倒计时显示和当前内存使用率
-    if (m_isAutoMemoryCleanEnabled && m_memoryCleanTimer->isActive()) {
-        int remainingTime = m_memoryCleanTimer->remainingTime() / 1000;
-        int hours = remainingTime / 3600;
-        int minutes = (remainingTime % 3600) / 60;
-        int seconds = remainingTime % 60;
-        nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
-    } else {
-        nextScanTimeLab->setText("已禁用");
-    }
-    
-    // 初始化当前内存使用率显示
-    int initialMemoryUsage = GetCurrentMemoryUsage();
-    memoryUsageLab->setText(QString("当前内存：%1%").arg(initialMemoryUsage));
-    
-    // 连接内存阈值下拉框
-    connect(thresholdCbx, &QComboBox::currentIndexChanged, [=](int index) {
-        // 30%, 40%, 50%, 60%, 70%, 80%, 90%
-        int thresholds[] = {30, 40, 50, 60, 70, 80, 90};
-        int newThreshold = thresholds[index];
-        appDatas.setMemoryCleanThreshold(newThreshold);
-        m_memoryCleanThreshold = newThreshold;
+        return m_memoryCleanTimer->remainingTime() / 1000;
     });
 
-    // 数据备份和恢复
-    QHBoxLayout *backupLayout = new QHBoxLayout;
-    QPushButton *createBackupBtn = new QPushButton("创建数据备份");
-    createBackupBtn->setStyleSheet("background-color:#34B7F1;");
-    QPushButton *restoreBackupBtn = new QPushButton("从备份恢复");
-    restoreBackupBtn->setStyleSheet("background-color:#9370DB;");
-
-    backupLayout->addWidget(createBackupBtn);
-    backupLayout->addWidget(restoreBackupBtn);
-    backupLayout->addStretch();
-
-    // 内存清理功能
-    QHBoxLayout *memoryCleanLayout = new QHBoxLayout;
-    QPushButton *memoryCleanBtn = new QPushButton("一键内存清理");
-    memoryCleanBtn->setStyleSheet("background-color:#E74C3C;");
-    memoryCleanLayout->addWidget(memoryCleanBtn);
-    memoryCleanLayout->addStretch();
-    connect(memoryCleanBtn, &QPushButton::clicked, [=]() {
-        PerformMemoryClean(this);
-        
-        // 重置下次扫描时间
-        if (appDatas.isAutoMemoryCleanEnabled() && m_memoryCleanTimer->isActive()) {
-            int intervalMinutes = appDatas.memoryCleanInterval();
-            m_memoryCleanTimer->stop();
-            m_memoryCleanTimer->start(intervalMinutes * 60 * 1000);
-            
-            // 更新倒计时显示
-            int totalSeconds = intervalMinutes * 60;
-            int hours = totalSeconds / 3600;
-            int minutes = (totalSeconds % 3600) / 60;
-            int seconds = totalSeconds % 60;
-            nextScanTimeLab->setText(QString("%1:%2:%3").arg(hours, 2, 10, QChar('0')).arg(minutes, 2, 10, QChar('0')).arg(seconds, 2, 10, QChar('0')));
+    connect(&dlg, &SettingsDialog::autoMemoryCleanSettingsChanged,
+            this, &MainWindow::onAutoMemoryCleanSettingsChanged);
+    connect(&dlg, &SettingsDialog::themeChanged,
+            this, &MainWindow::onThemeChanged);
+    connect(&dlg, &SettingsDialog::dataRestored,
+            this, &MainWindow::switchToDayView);
+    connect(&dlg, &SettingsDialog::dayRangeChanged, this, [this]() {
+        if (auto *dayView = findChild<DayView*>("dayView")) {
+            dayView->rebuildTimeAxis();
         }
     });
 
-    // 连接备份和恢复按钮的信号槽
-    connect(createBackupBtn, &QPushButton::clicked, [=]() {
-        QString backupFileName = "study_data_backup_" + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".json";
-        QString backupPath = QFileDialog::getSaveFileName(nullptr, "保存数据备份", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + backupFileName, "JSON Files (*.json)");
-
-        if (!backupPath.isEmpty()) {
-            if (appDatas.createBackup(backupPath)) {
-                QMessageBox::information(nullptr, "成功", "数据备份创建成功！\n" + backupPath);
-            } else {
-                QMessageBox::critical(nullptr, "失败", "数据备份创建失败！");
-            }
-        }
-    });
-
-    connect(restoreBackupBtn, &QPushButton::clicked, [=]() {
-        QString backupPath = QFileDialog::getOpenFileName(nullptr, "选择数据备份文件", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), "JSON Files (*.json)");
-
-        if (!backupPath.isEmpty()) {
-            QMessageBox::StandardButton reply = QMessageBox::warning(
-                nullptr, 
-                "警告", 
-                "从备份恢复将覆盖当前所有数据，是否继续？",
-                QMessageBox::Yes | QMessageBox::No, 
-                QMessageBox::No
-            );
-
-            if (reply == QMessageBox::Yes) {
-                if (appDatas.restoreFromBackup(backupPath)) {
-                    QMessageBox::information(nullptr, "成功", "数据恢复成功！");
-                    switchToDayView();
-                } else {
-                    QMessageBox::critical(nullptr, "失败", "数据恢复失败！");
-                }
-            }
-        }
-    });
-
-    // 添加所有布局到主布局
-    mainLayout->addLayout(autoStartLayout);
-    mainLayout->addLayout(minTrayLayout);
-    mainLayout->addLayout(themeLayout);
-    mainLayout->addLayout(defaultViewLayout);
-    mainLayout->addLayout(pathLayout);
-    mainLayout->addLayout(logLayout);
-    mainLayout->addLayout(backupLayout);
-    mainLayout->addLayout(memoryCleanLayout);
-    mainLayout->addWidget(autoMemoryCleanGroup, 0, Qt::AlignTop);
-    mainLayout->addWidget(rateContainer, 0, Qt::AlignTop);
-    mainLayout->addStretch();
-
-    settingsDlg->exec();
+    DialogAnimator::applyFadeSlideIn(&dlg);
+    dlg.exec();
     appDatas.saveSettings();
 }
 
-// 自动启动设置改变事件处理
-// @param state 复选框状态
-void MainWindow::onAutoStartupChanged(Qt::CheckState state)
+// 自动内存清理设置变化后，按最新配置重启定时器
+void MainWindow::onAutoMemoryCleanSettingsChanged()
 {
-    bool newState = (state == Qt::Checked);
-    // 只有状态真正改变时才执行
-    if (newState == appDatas.isAutoStartup()) {
-        qDebug() << "开机自启状态未变化，跳过";
-        return;
-    }
-    appDatas.setAutoStartup(newState);
-}
+    m_isAutoMemoryCleanEnabled = appDatas.isAutoMemoryCleanEnabled();
+    m_memoryCleanInterval = appDatas.memoryCleanInterval();
+    m_memoryCleanThreshold = appDatas.memoryCleanThreshold();
 
-// 最小化到托盘设置改变事件处理
-// @param state 复选框状态
-void MainWindow::onMinToTrayChanged(Qt::CheckState state)
-{
-    bool newState = (state == Qt::Checked);
-    if (newState == appDatas.isMinToTray()) {
-        qDebug() << "最小化到托盘状态未变化，跳过";
-        return;
+    if (m_isAutoMemoryCleanEnabled) {
+        m_memoryCleanTimer->start(m_memoryCleanInterval * 60 * 1000);
+    } else {
+        m_memoryCleanTimer->stop();
     }
-    appDatas.setMinToTray(newState);
 }
 
 // 主题设置改变事件处理
@@ -787,32 +436,8 @@ void MainWindow::onThemeChanged(int index)
         return;
     }
     applyTheme(index);
-}
-
-// 打开存档文件位置
-void MainWindow::openSavePath()
-{
-    QString savePath = appDatas.path("Save");
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(savePath).absolutePath()));
-}
-
-// 打开日志文件位置
-void MainWindow::openLogPath()
-{
-    QString logPath = appDatas.path("Log");
-    QDesktopServices::openUrl(QUrl::fromLocalFile(logPath));
-}
-
-// 跳转到微软商店评分页面
-void MainWindow::goToMsStoreRate()
-{
-    QDesktopServices::openUrl(QUrl("https://apps.microsoft.com/detail/9P7X9B7RKXDB?hl=neutral&gl=CN&ocid=pdpshare"));
-}
-
-// 跳转到GitHub发布页面
-void MainWindow::goToGithubReleases()
-{
-    QDesktopServices::openUrl(QUrl("https://github.com/noname33245/Plan_through/releases"));
+    appDatas.saveSettings();
+    updateTrayIcon();
 }
 
 // 检查内存使用情况并在需要时执行清理
@@ -865,7 +490,6 @@ void MainWindow::showMemoryCleanError()
                 // 创建失败提示标签
                 QLabel *errorLabel = new QLabel("失败，请使用管理员运行");
                 errorLabel->setObjectName("memoryCleanErrorLabel");
-                errorLabel->setStyleSheet("color: red; font-weight: bold;");
                 
                 // 添加到布局中，放在按钮旁边
                 layout->addWidget(errorLabel);
@@ -887,7 +511,18 @@ void MainWindow::closeEvent(QCloseEvent *event)
     // 如果设置了最小化到托盘，则隐藏窗口而不关闭
     if (appDatas.isMinToTray()) {
         event->ignore();
-        this->hide();
+        // 淡出后再隐藏到托盘
+        QPropertyAnimation *fadeOut = new QPropertyAnimation(this, "windowOpacity");
+        fadeOut->setDuration(180);
+        fadeOut->setStartValue(this->windowOpacity());
+        fadeOut->setEndValue(0.0);
+        fadeOut->setEasingCurve(QEasingCurve::InCubic);
+        connect(fadeOut, &QPropertyAnimation::finished, this, [=]() {
+            this->hide();
+            this->setWindowOpacity(1.0);
+            fadeOut->deleteLater();
+        });
+        fadeOut->start();
     } else {
         event->accept();
     }
@@ -896,19 +531,11 @@ void MainWindow::closeEvent(QCloseEvent *event)
 // 鼠标按下事件处理
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton) {
-        // 检查是否点击了调整大小手柄
-        if (m_resizeHandle && m_resizeHandle->geometry().contains(event->pos())) {
-            m_isResizing = true;
-            m_resizeStartPos = event->globalPosition().toPoint();
-            this->setCursor(Qt::SizeFDiagCursor);
-        }
-        // 检查是否在标题栏区域（顶部标签栏）
-        else if (event->pos().y() <= 60) { // 假设标题栏高度为60
-            m_isDragging = true;
-            m_dragStartPos = event->globalPosition().toPoint() - this->frameGeometry().topLeft();
-            this->setCursor(Qt::ClosedHandCursor);
-        }
+    // 只在标题栏区域启动拖窗；缩放手柄由 ResizeHandle 自己处理
+    if (event->button() == Qt::LeftButton && event->pos().y() <= 60) {
+        m_isDragging = true;
+        m_dragStartPos = event->globalPosition().toPoint() - this->frameGeometry().topLeft();
+        this->setCursor(Qt::ClosedHandCursor);
     }
     QMainWindow::mousePressEvent(event);
 }
@@ -916,39 +543,21 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 // 鼠标移动事件处理
 void MainWindow::mouseMoveEvent(QMouseEvent *event)
 {
-    // 处理调整大小
-    if (m_isResizing) {
-        QPoint delta = event->globalPosition().toPoint() - m_resizeStartPos;
-        
-        // 分别计算新的宽度和高度，确保不小于最小值
-        int newWidth = this->width() + delta.x();
-        int newHeight = this->height() + delta.y();
-        
-        // 确保宽度不小于最小值
-        newWidth = qMax(newWidth, this->minimumWidth());
-        // 确保高度不小于最小值
-        newHeight = qMax(newHeight, this->minimumHeight());
-        
-        // 调整窗口大小
-        this->resize(newWidth, newHeight);
-        m_resizeStartPos = event->globalPosition().toPoint();
+    // 兜底：如果左键已经松开却没收到 release（例如拖出了窗口），
+    // 立刻把拖动状态和光标清掉，避免光标卡在“抓手/缩放”样式
+    if (event->buttons() == Qt::NoButton && m_isDragging) {
+        m_isDragging = false;
+        this->unsetCursor();
     }
-    // 处理拖动
-    else if (m_isDragging) {
+
+    if (m_isDragging) {
         this->move(event->globalPosition().toPoint() - m_dragStartPos);
-    }
-    // 处理鼠标悬停时的光标变化
-    else {
-        // 检查是否在调整大小手柄上
-        if (m_resizeHandle && m_resizeHandle->geometry().contains(event->pos())) {
-            this->setCursor(Qt::SizeFDiagCursor);
-        }
-        // 检查是否在标题栏区域（顶部标签栏）
-        else if (event->pos().y() <= 60) {
+    } else {
+        // 悬停光标只跟随标题栏区域，其余区域交回系统默认
+        if (event->pos().y() <= 60) {
             this->setCursor(Qt::OpenHandCursor);
-        }
-        else {
-            this->setCursor(Qt::ArrowCursor);
+        } else {
+            this->unsetCursor();
         }
     }
     QMainWindow::mouseMoveEvent(event);
@@ -958,14 +567,10 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event)
 void MainWindow::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        if (m_isResizing) {
-            m_isResizing = false;
-            this->setCursor(Qt::ArrowCursor);
-        }
-        if (m_isDragging) {
-            m_isDragging = false;
-            this->setCursor(Qt::ArrowCursor);
-        }
+        m_isDragging = false;
+        // unsetCursor 而不是 setCursor(Arrow)：清掉自定义光标，
+        // 让子控件（含缩放手柄）恢复各自的默认光标
+        this->unsetCursor();
     }
     QMainWindow::mouseReleaseEvent(event);
 }
@@ -992,7 +597,16 @@ bool MainWindow::event(QEvent *event)
             m_resizeHandle->move(this->width() - handleSize, this->height() - handleSize);
         }
     }
-    
+
+    // 主题切换（含跟随系统时系统明暗变化）后，
+    // 内嵌 <font color> 的富文本不会自动跟着变色，需要重新生成一次
+    if (event->type() == QEvent::ThemeChange ||
+        event->type() == QEvent::ApplicationPaletteChange) {
+        if (DayView *dayView = findChild<DayView*>("dayView")) {
+            QTimer::singleShot(0, dayView, [dayView]() { dayView->updateDayViewStats(); });
+        }
+    }
+
     return QMainWindow::event(event);
 }
 
@@ -1019,25 +633,12 @@ void MainWindow::initUI()
     m_minimizeBtn = new QPushButton("-");
     m_closeBtn = new QPushButton("×");
     
-    // 按钮样式
-    QString topBtnStyle = 
-        "QPushButton{font-size:15px; font-weight:bold; padding:8px 25px; margin-right:8px; border-radius:8px; border:none; background-color:#FFFFFF; color:#2D8CF0;}"
-        "QPushButton:checked{background-color:#2D8CF0; color:#FFFFFF;}"
-        "QPushButton:hover{background-color:#ECF5FF; color:#1D7AD9;}"
-        "QPushButton:pressed{background-color:#1D7AD9; color:#FFFFFF;}";
-    QString settingBtnStyle = 
-        "QPushButton{font-size:12px; padding:6px 12px; border-radius:6px; border:none; background-color:#2D8CF0; color:#FFFFFF; margin-left:8px;}"
-        "QPushButton:hover{background-color:#1D7AD9;}";
-    QString windowBtnStyle = 
-        "QPushButton{font-size:16px; font-weight:bold; padding:4px 10px; border-radius:6px; border:none; background-color:#FFFFFF; color:#333333; margin-left:4px;}"
-        "QPushButton:hover{background-color:#ECF5FF; color:#1D7AD9;}"
-        "QPushButton:pressed{background-color:#1D7AD9; color:#FFFFFF;}";
-    
-    m_dayViewBtn->setStyleSheet(topBtnStyle);
-    m_monthViewBtn->setStyleSheet(topBtnStyle);
-    m_settingsBtn->setStyleSheet(settingBtnStyle);
-    m_minimizeBtn->setStyleSheet(windowBtnStyle);
-    m_closeBtn->setStyleSheet(windowBtnStyle);
+    // 按钮样式：全部交给统一主题表，这里只标记用途
+    m_dayViewBtn->setObjectName("dayViewBtn");
+    m_monthViewBtn->setObjectName("monthViewBtn");
+    m_settingsBtn->setObjectName("settingsBtn");
+    m_minimizeBtn->setObjectName("minimizeBtn");
+    m_closeBtn->setObjectName("closeBtn");
     
     // 设置按钮为可检查状态
     m_dayViewBtn->setCheckable(true);
@@ -1048,7 +649,18 @@ void MainWindow::initUI()
     connect(m_minimizeBtn, &QPushButton::clicked, this, &MainWindow::showMinimized);
     connect(m_closeBtn, &QPushButton::clicked, this, [=]() {
         if (appDatas.isMinToTray()) {
-            this->hide();
+            // 淡出后隐藏到托盘
+            QPropertyAnimation *fadeOut = new QPropertyAnimation(this, "windowOpacity");
+            fadeOut->setDuration(180);
+            fadeOut->setStartValue(this->windowOpacity());
+            fadeOut->setEndValue(0.0);
+            fadeOut->setEasingCurve(QEasingCurve::InCubic);
+            connect(fadeOut, &QPropertyAnimation::finished, this, [=]() {
+                this->hide();
+                this->setWindowOpacity(1.0);
+                fadeOut->deleteLater();
+            });
+            fadeOut->start();
         } else {
             qApp->quit();
         }
@@ -1111,29 +723,13 @@ void MainWindow::initUI()
         }
     });
     
-    // 创建调整大小手柄
+    // 创建调整大小手柄（缩放逻辑全部由 ResizeHandle 自己处理）
     int handleSize = 12;
-    m_resizeHandle = new QWidget(this);
-    m_resizeHandle->setFixedSize(handleSize, handleSize);
-    m_resizeHandle->setStyleSheet(
-        "QWidget{background-color:#2D8CF0; border-radius:4px;}"
-        "QWidget:hover{background-color:#1D7AD9; cursor:se-resize;}"
-    );
+    m_resizeHandle = new ResizeHandle(this);
     m_resizeHandle->move(this->width() - handleSize, this->height() - handleSize);
-    m_resizeHandle->setMouseTracking(true);
-}
 
-QString MainWindow::loadQss(int type)
-{
-    const QString path = QString(":/style%1.qss").arg(type);
-    QFile file(path);
-    //打开文件
-    if(!file.open(QFile::ReadOnly))
-    {
-        qDebug()<<"Error in open "+path;
-        return "";
-    }
-    QString style = QString::fromUtf8(file.readAll());
-    file.close();
-    return style;
+    // 快捷键
+    new QShortcut(QKeySequence("Ctrl+1"), this, [this]() { switchToDayView(); });
+    new QShortcut(QKeySequence("Ctrl+2"), this, [this]() { switchToMonthView(); });
+    new QShortcut(QKeySequence("Ctrl+,"), this, [this]() { showSettingsWindow(); });
 }

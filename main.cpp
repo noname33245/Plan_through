@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include "mainwindow.h"
 #include "appdatas.h"
+#include "utils/theme.h"
 
 #define SERVER_NAME "PlanThrough_SingleInstance_Server"
 static MainWindow *g_mainWindow = nullptr;
@@ -27,6 +28,13 @@ int main(int argc, char *argv[])
             socket.close();
             return 0;
         }
+
+        // 在创建任何窗口之前锁定亮色方案：
+        // 1) 写入固定的浅色调色板，避免被 Windows 深色模式/强调色带偏
+        // 2) 把统一 QSS 挂到 QApplication 上，独立弹窗（QMessageBox、下拉列表、
+        //    右键菜单等）也能拿到同样的配色
+        Theme::setTheme(appDatas.themeType());
+        Theme::applyToApplication();
 
         qDebug() << "Creating server";
 

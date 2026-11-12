@@ -1,0 +1,1210 @@
+/* ===========================================================================
+ * Plan_through 主题模板
+ * ---------------------------------------------------------------------------
+ * 这里除"时间轴分类标签"的固定语义色外，不允许出现硬编码色值，
+ * 所有主题相关颜色都是 @key@ 占位符，由 Theme::styleSheet() 在运行时注入。
+ * 想换配色请修改 utils/theme.cpp 里的 Colors 表。
+ *
+ * 之所以把样式表挂到 QApplication 上：parent 为 nullptr 的 QMessageBox、
+ * 右键菜单、下拉弹窗都是独立顶层窗口，只有应用级样式表才能覆盖它们，
+ * 否则会跟随 Windows 深色主题变黑。
+ * =========================================================================== */
+
+/* ------------------------------ 1. 容器基础 ------------------------------ */
+QMainWindow {
+    background-color: @windowBg@;
+    border: none;
+}
+
+QWidget {
+    color: @text@;
+}
+
+QDialog {
+    background-color: @cardBg@;
+}
+
+QStackedWidget {
+    background-color: transparent;
+}
+
+QLabel {
+    color: @text@;
+    background: transparent;
+}
+
+QGroupBox {
+    color: @text@;
+    font-weight: bold;
+    background-color: @cardBg@;
+    border: 1px solid @border@;
+    border-radius: 8px;
+    /* 标题矩形固定在顶部 0~16px，边框线落在 margin-top 处，
+       所以 margin-top 取标题高度的一半（8px）才能让文字骑在线上 */
+    margin-top: 8px;
+    padding-top: 10px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 5px 0 5px;
+}
+
+/* ------------------------------ 2. 按钮 --------------------------------- */
+/* 默认按钮：之前完全依赖系统样式绘制，深色系统下会变成深灰底，这里定死 */
+QPushButton {
+    background-color: @cardBg@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+}
+
+QPushButton:hover {
+    background-color: @accentSoft@;
+    border-color: @accent@;
+    color: @accentHover@;
+}
+
+QPushButton:pressed {
+    background-color: @accent@;
+    border-color: @accent@;
+    color: #FFFFFF;
+}
+
+QPushButton:disabled {
+    background-color: @cardAltBg@;
+    border-color: @borderSoft@;
+    color: @textDisabled@;
+}
+
+/* 语义按钮：由 objectName 指定，替代原先零散的 setStyleSheet */
+QPushButton#primaryBtn {
+    background-color: @accent@;
+    color: #FFFFFF;
+    border: none;
+}
+QPushButton#primaryBtn:hover   { background-color: @accentHover@; }
+QPushButton#primaryBtn:pressed { background-color: @accentPressed@; }
+
+QPushButton#successBtn {
+    background-color: @success@;
+    color: #FFFFFF;
+    border: none;
+}
+QPushButton#successBtn:hover   { background-color: @successHover@; }
+QPushButton#successBtn:pressed { background-color: @successPressed@; }
+
+QPushButton#warningBtn {
+    background-color: @warning@;
+    color: #FFFFFF;
+    border: none;
+}
+QPushButton#warningBtn:hover   { background-color: @warningHover@; }
+QPushButton#warningBtn:pressed { background-color: @warningHover@; }
+
+QPushButton#cyanBtn {
+    background-color: @cyan@;
+    color: #FFFFFF;
+    border: none;
+}
+QPushButton#cyanBtn:hover   { background-color: @cyanHover@; }
+QPushButton#cyanBtn:pressed { background-color: @cyanHover@; }
+
+QPushButton#violetBtn {
+    background-color: @violet@;
+    color: #FFFFFF;
+    border: none;
+}
+QPushButton#violetBtn:hover   { background-color: @violetHover@; }
+QPushButton#violetBtn:pressed { background-color: @violetHover@; }
+
+QPushButton#dangerBtn {
+    background-color: @danger@;
+    color: #FFFFFF;
+    border: none;
+}
+QPushButton#dangerBtn:hover   { background-color: @dangerHover@; }
+QPushButton#dangerBtn:pressed { background-color: @dangerPressed@; }
+
+/* ------------------------------ 3. 输入类 -------------------------------- */
+QLineEdit,
+QSpinBox,
+QDoubleSpinBox,
+QTimeEdit,
+QDateEdit,
+QDateTimeEdit,
+QTextEdit,
+QPlainTextEdit {
+    background-color: @cardBg@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 4px;
+    padding: 2px 6px;
+    selection-background-color: @accent@;
+    selection-color: #FFFFFF;
+}
+
+QLineEdit:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus,
+QTimeEdit:focus,
+QDateEdit:focus,
+QDateTimeEdit:focus,
+QTextEdit:focus,
+QPlainTextEdit:focus {
+    border-color: @accent@;
+}
+
+/* 数字/时间输入框的微调按钮：QSS 一旦接管输入框，不显式定位的话
+   文字区会一直铺到右边框，把上下按钮压在下面，导致按钮点不到 */
+QSpinBox::up-button,
+QDoubleSpinBox::up-button,
+QTimeEdit::up-button,
+QDateEdit::up-button,
+QDateTimeEdit::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 16px;
+    border: none;
+    border-top-right-radius: 4px;
+    background-color: transparent;
+}
+
+QSpinBox::down-button,
+QDoubleSpinBox::down-button,
+QTimeEdit::down-button,
+QDateEdit::down-button,
+QDateTimeEdit::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 16px;
+    border: none;
+    border-bottom-right-radius: 4px;
+    background-color: transparent;
+}
+
+QSpinBox::up-button:hover,
+QDoubleSpinBox::up-button:hover,
+QTimeEdit::up-button:hover,
+QDateEdit::up-button:hover,
+QDateTimeEdit::up-button:hover,
+QSpinBox::down-button:hover,
+QDoubleSpinBox::down-button:hover,
+QTimeEdit::down-button:hover,
+QDateEdit::down-button:hover,
+QDateTimeEdit::down-button:hover {
+    background-color: @accentSoft@;
+}
+
+QSpinBox::up-arrow,
+QDoubleSpinBox::up-arrow,
+QTimeEdit::up-arrow,
+QDateEdit::up-arrow,
+QDateTimeEdit::up-arrow {
+    image: url(:/icons/arrow-up.svg);
+    width: 8px;
+    height: 5px;
+}
+
+QSpinBox::down-arrow,
+QDoubleSpinBox::down-arrow,
+QTimeEdit::down-arrow,
+QDateEdit::down-arrow,
+QDateTimeEdit::down-arrow {
+    image: url(:/icons/arrow-down.svg);
+    width: 8px;
+    height: 5px;
+}
+
+/* ------------------------------ 4. 下拉框 -------------------------------- */
+QComboBox {
+    background-color: @cardBg@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-height: 22px;
+    font-size: 12px;
+}
+
+QComboBox:hover,
+QComboBox:on {
+    border-color: @accent@;
+}
+
+QComboBox:disabled {
+    background-color: @cardAltBg@;
+    color: @textDisabled@;
+    border-color: @borderSoft@;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 18px;
+    border: none;
+    background: transparent;
+}
+
+/* 箭头用内嵌图标画，避免 QSS 接管后原生箭头消失或被系统主题染色 */
+QComboBox::down-arrow {
+    image: url(@arrowIcon@);
+    width: 10px;
+    height: 6px;
+    margin-right: 4px;
+}
+
+QComboBox::down-arrow:disabled {
+    opacity: 0.4;
+}
+
+/* 下拉列表是独立弹出窗口，必须显式给底色，否则跟系统走 */
+QComboBox QAbstractItemView {
+    background-color: @cardBg@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 4px;
+    outline: none;
+    padding: 2px;
+    selection-background-color: @accentSoft@;
+    selection-color: @accentHover@;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 24px;
+    padding: 2px 8px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: @accentSoft@;
+    color: @accentHover@;
+}
+
+/* ---------------------------- 5. 复选 / 单选 ----------------------------- */
+QCheckBox {
+    background: transparent;
+    color: @text@;
+    spacing: 6px;
+    font-size: 12px;
+}
+
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid @border@;
+    border-radius: 3px;
+    background-color: @cardBg@;
+}
+
+QCheckBox::indicator:hover {
+    border-color: @accent@;
+}
+
+QCheckBox::indicator:checked {
+    background-color: @accent@;
+    border-color: @accent@;
+    image: url(:/icons/check.svg);
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: @accentHover@;
+    border-color: @accentHover@;
+}
+
+QCheckBox::indicator:disabled {
+    background-color: @cardAltBg@;
+    border-color: @borderSoft@;
+}
+
+QRadioButton {
+    background: transparent;
+    color: @text@;
+    spacing: 6px;
+}
+
+QRadioButton::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid @border@;
+    border-radius: 7px;
+    background-color: @cardBg@;
+}
+
+QRadioButton::indicator:checked {
+    border: 4px solid @accent@;
+    background-color: @cardBg@;
+}
+
+/* --------------------------- 6. 滚动条 / 滚动区 -------------------------- */
+QScrollArea {
+    border: none;
+    background: transparent;
+}
+
+QScrollBar:vertical {
+    background: @scrollTrack@;
+    width: 8px;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar::handle:vertical {
+    background-color: @scrollHandle@;
+    min-height: 24px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: @scrollHandleHover@;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+    background: none;
+    border: none;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollBar:horizontal {
+    background: @scrollTrack@;
+    height: 8px;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: @scrollHandle@;
+    min-width: 24px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: @scrollHandleHover@;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+    background: none;
+    border: none;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
+/* ---------------------------- 7. 菜单 / 提示 ----------------------------- */
+QMenu {
+    background-color: @cardBg@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QMenu::item {
+    background: transparent;
+    color: @text@;
+    padding: 5px 24px 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+QMenu::item:selected {
+    background-color: @accentSoft@;
+    color: @accentHover@;
+}
+
+QMenu::item:disabled {
+    color: @textDisabled@;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: @borderSoft@;
+    margin: 4px 6px;
+}
+
+QMenu::icon {
+    left: 6px;
+}
+
+QToolTip {
+    background-color: @cardBg@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+/* ------------------------------ 8. 消息框 -------------------------------- */
+QMessageBox {
+    background-color: @cardBg@;
+}
+
+QMessageBox QLabel {
+    color: @text@;
+    font-size: 12px;
+}
+
+QMessageBox QPushButton {
+    min-width: 74px;
+    min-height: 24px;
+    padding: 4px 14px;
+}
+
+/* ------------------------------ 9. 日历 --------------------------------- */
+QCalendarWidget {
+    background-color: @cardBg@;
+    color: @text@;
+}
+
+QCalendarWidget QWidget#qt_calendar_navigationbar {
+    background-color: @accent@;
+    color: #FFFFFF;
+}
+
+QCalendarWidget QToolButton {
+    background: transparent;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+QCalendarWidget QToolButton:hover {
+    background-color: rgba(255, 255, 255, 50);
+}
+
+QCalendarWidget QToolButton:pressed {
+    background-color: rgba(255, 255, 255, 90);
+}
+
+QCalendarWidget QToolButton:checked,
+QCalendarWidget QToolButton:focus {
+    background-color: transparent;
+    color: #FFFFFF;
+    outline: none;
+}
+
+QCalendarWidget QToolButton::menu-indicator {
+    image: none;
+}
+
+QCalendarWidget QMenu {
+    background-color: @cardBg@;
+    color: @text@;
+}
+
+QCalendarWidget QSpinBox {
+    background-color: @cardBg@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 3px;
+    selection-background-color: @accent@;
+    selection-color: #FFFFFF;
+}
+
+QCalendarWidget QAbstractItemView:enabled {
+    background-color: @cardBg@;
+    color: @text@;
+    outline: none;
+    selection-background-color: @accent@;
+    selection-color: #FFFFFF;
+}
+
+QCalendarWidget QAbstractItemView:disabled {
+    color: @textDisabled@;
+}
+
+QCalendarWidget QWidget {
+    alternate-background-color: @cardAltBg@;
+}
+
+/* ------------------------------ 10. 图表 -------------------------------- */
+QChartView {
+    background-color: transparent;
+    border: none;
+}
+
+/* ----------------------------- 11. 进度条 ------------------------------- */
+QProgressBar {
+    background-color: @accentSoft@;
+    color: @text@;
+    border: none;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+QProgressBar::chunk {
+    border-radius: 6px;
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                      stop:0 @accent@, stop:1 @accentPressed@);
+}
+
+/* =========================== 12. 主窗口顶部栏 =========================== */
+QPushButton#dayViewBtn,
+QPushButton#monthViewBtn {
+    font-size: 15px;
+    font-weight: bold;
+    padding: 8px 25px;
+    margin-right: 8px;
+    border-radius: 8px;
+    border: none;
+    background-color: @cardBg@;
+    color: @accent@;
+}
+
+QPushButton#dayViewBtn:hover,
+QPushButton#monthViewBtn:hover {
+    background-color: @accentSoft@;
+    color: @accentHover@;
+}
+
+QPushButton#dayViewBtn:checked,
+QPushButton#monthViewBtn:checked {
+    background-color: @accent@;
+    color: #FFFFFF;
+}
+
+QPushButton#dayViewBtn:pressed,
+QPushButton#monthViewBtn:pressed {
+    background-color: @accentHover@;
+    color: #FFFFFF;
+}
+
+QPushButton#settingsBtn {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    background-color: @accent@;
+    color: #FFFFFF;
+    margin-left: 8px;
+}
+
+QPushButton#settingsBtn:hover {
+    background-color: @accentHover@;
+}
+
+QPushButton#minimizeBtn,
+QPushButton#closeBtn {
+    font-size: 16px;
+    font-weight: bold;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: none;
+    background-color: @cardBg@;
+    color: @text@;
+    margin-left: 4px;
+}
+
+QPushButton#minimizeBtn:hover,
+QPushButton#closeBtn:hover {
+    background-color: @accentSoft@;
+    color: @accentHover@;
+}
+
+QPushButton#minimizeBtn:pressed,
+QPushButton#closeBtn:pressed {
+    background-color: @accent@;
+    color: #FFFFFF;
+}
+
+QWidget#resizeHandle {
+    background-color: @accent@;
+    border-radius: 4px;
+}
+
+QWidget#resizeHandle:hover {
+    background-color: @accentHover@;
+}
+
+/* ============================== 13. DayView ============================= */
+DayView QProgressBar {
+    border: none;
+    border-radius: 6px;
+    height: 22px;
+    background-color: @accentSoft@;
+    font-size: 12px;
+    font-weight: bold;
+    color: @text@;
+}
+
+DayView QProgressBar::chunk {
+    border-radius: 6px;
+    min-width: 12px;
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                      stop:0 @accent@, stop:1 @accentPressed@);
+}
+
+DayView > #targetHourShowLabel {
+    font-size: 12px;
+    font-weight: bold;
+    color: @success@;
+    padding: 0 6px;
+}
+
+DayView > #clearBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: none;
+    background-color: @danger@;
+    color: #FFFFFF;
+}
+
+DayView > #clearBtn:hover   { background-color: @dangerHover@; }
+DayView > #clearBtn:pressed { background-color: @dangerPressed@; }
+
+DayView #setTargetBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: none;
+    background-color: @success@;
+    color: #FFFFFF;
+}
+
+DayView #setTargetBtn:hover   { background-color: @successHover@; }
+DayView #setTargetBtn:pressed { background-color: @successPressed@; }
+
+DayView > #progressGroup {
+    font-size: 13px;
+    font-weight: bold;
+    color: @accent@;
+    border: 2px solid @accentSoft@;
+    border-radius: 8px;
+    padding: 8px;
+    margin-top: 8px;
+    margin-left: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+}
+
+DayView #progressTitle {
+    font-size: 13px;
+    font-weight: bold;
+    color: @accent@;
+    /* 标题行骑在分组框上边线上：上半截在卡片外（页面底色），
+       下半截在卡片内（卡片底色），用渐变把这条分界线对上边框线，
+       否则深色主题下会露出两个色块 */
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                      stop:0 @windowBg@, stop:0.5 @windowBg@,
+                                      stop:0.5 @cardBg@, stop:1 @cardBg@);
+    padding: 0 4px;
+}
+
+DayView #selectedDateLabel {
+    font-size: 12px;
+    font-weight: bold;
+    color: @accent@;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                      stop:0 @windowBg@, stop:0.5 @windowBg@,
+                                      stop:0.5 @cardBg@, stop:1 @cardBg@);
+    padding: 0 4px;
+}
+
+DayView #todayStudyHourLabel {
+    font-size: 12px;
+    font-weight: bold;
+    color: @text@;
+    padding: 4px 0;
+}
+
+DayView #statsGroup {
+    font-size: 13px;
+    font-weight: bold;
+    color: @accent@;
+    border: 2px solid @accentSoft@;
+    border-radius: 8px;
+    padding: 8px;
+    margin-top: 8px;
+}
+
+DayView #continuousDaysLabel,
+DayView #maxContinuousDaysLabel,
+DayView #completedProjectsLabel,
+DayView #studyCheckLabel {
+    font-size: 12px;
+    font-weight: bold;
+    color: @textSecondary@;
+    padding: 2px;
+}
+
+DayView #timeAxisScroll {
+    border: none;
+    background-color: transparent;
+}
+
+DayView #timeAxisScroll QScrollBar:vertical {
+    width: 6px;
+    background-color: @scrollTrack@;
+    border-radius: 3px;
+}
+
+DayView #timeAxisScroll QScrollBar::handle:vertical {
+    background-color: @scrollHandle@;
+    border-radius: 3px;
+}
+
+DayView #timeAxisScroll QScrollBar::handle:vertical:hover {
+    background-color: @scrollHandleHover@;
+}
+
+/* ------------------------- 14. 日期选择对话框 --------------------------- */
+#dateSelectDialog {
+    background-color: @windowBg@;
+    border-radius: 10px;
+    border: none;
+}
+
+#dateSelectDialog QCalendarWidget {
+    background-color: @cardBg@;
+    border-radius: 6px;
+    border: 1px solid @accentSoft@;
+}
+
+#dateSelectDialog QPushButton {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 15px;
+    border-radius: 6px;
+    border: none;
+    background-color: @accent@;
+    color: #FFFFFF;
+    margin-top: 8px;
+}
+
+#dateSelectDialog QPushButton:hover {
+    background-color: @accentHover@;
+}
+
+#dateSelectDialog QPushButton:pressed {
+    background-color: @accentPressed@;
+}
+
+/* ------------------------- 15. 设置目标对话框 --------------------------- */
+#setTargetDialog {
+    background-color: @windowBg@;
+    border-radius: 10px;
+    border: none;
+}
+
+#setTargetDialog QLabel {
+    font-size: 13px;
+    font-weight: bold;
+    color: @success@;
+    padding: 6px 0;
+    text-align: center;
+}
+
+#setTargetDialog #hourBtn {
+    font-size: 12px;
+    padding: 6px 0;
+    border-radius: 6px;
+    border: none;
+    background-color: @cardBg@;
+    color: @text@;
+}
+
+#setTargetDialog #hourBtn:hover {
+    background-color: @successSoft@;
+    color: @success@;
+}
+
+#setTargetDialog #hourBtn:pressed {
+    background-color: @success@;
+    color: #FFFFFF;
+    font-weight: bold;
+}
+
+#setTargetDialog #cancelBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 0;
+    border-radius: 6px;
+    border: none;
+    background-color: @cardAltBg@;
+    color: @textSecondary@;
+    width: 80px;
+    margin-top: 3px;
+}
+
+#setTargetDialog #cancelBtn:hover   { background-color: @borderSoft@; }
+#setTargetDialog #cancelBtn:pressed { background-color: @border@; }
+
+/* ============================== 16. TimeAxis ============================ */
+/* 尺寸统一，颜色由主题表提供：浅色主题浅底深字，深色主题深底亮字 */
+#timeAxis QPushButton[text="未安排"],
+#timeAxis QPushButton[text="学习"],
+#timeAxis QPushButton[text="吃饭"],
+#timeAxis QPushButton[text="睡觉"],
+#timeAxis QPushButton[text="洗澡"],
+#timeAxis QPushButton[text="游戏"],
+#timeAxis QPushButton[text="杂事"] {
+    font-size: 12px;
+    padding: 6px 3px;
+    border-radius: 10px;
+    border: none;
+}
+
+#timeAxis QPushButton[text="未安排"] {
+    background-color: @tagNoneBg@;
+    color: @tagNoneFg@;
+}
+#timeAxis QPushButton[text="未安排"]:hover,
+#timeAxis QPushButton[text="未安排"]:pressed {
+    background-color: @tagNoneHoverBg@;
+}
+
+#timeAxis QPushButton[text="学习"] {
+    background-color: @tagStudyBg@;
+    color: @tagStudyFg@;
+    font-weight: bold;
+}
+#timeAxis QPushButton[text="学习"]:hover,
+#timeAxis QPushButton[text="学习"]:pressed {
+    background-color: @tagStudyHoverBg@;
+}
+
+#timeAxis QPushButton[text="吃饭"] {
+    background-color: @tagMealBg@;
+    color: @tagMealFg@;
+    font-weight: bold;
+}
+#timeAxis QPushButton[text="吃饭"]:hover,
+#timeAxis QPushButton[text="吃饭"]:pressed {
+    background-color: @tagMealHoverBg@;
+}
+
+#timeAxis QPushButton[text="睡觉"] {
+    background-color: @tagSleepBg@;
+    color: @tagSleepFg@;
+    font-weight: bold;
+}
+#timeAxis QPushButton[text="睡觉"]:hover,
+#timeAxis QPushButton[text="睡觉"]:pressed {
+    background-color: @tagSleepHoverBg@;
+}
+
+#timeAxis QPushButton[text="洗澡"] {
+    background-color: @tagBathBg@;
+    color: @tagBathFg@;
+    font-weight: bold;
+}
+#timeAxis QPushButton[text="洗澡"]:hover,
+#timeAxis QPushButton[text="洗澡"]:pressed {
+    background-color: @tagBathHoverBg@;
+}
+
+#timeAxis QPushButton[text="游戏"] {
+    background-color: @tagGameBg@;
+    color: @tagGameFg@;
+    font-weight: bold;
+}
+#timeAxis QPushButton[text="游戏"]:hover,
+#timeAxis QPushButton[text="游戏"]:pressed {
+    background-color: @tagGameHoverBg@;
+}
+
+#timeAxis QPushButton[text="杂事"] {
+    background-color: @tagChoreBg@;
+    color: @tagChoreFg@;
+    font-weight: bold;
+}
+#timeAxis QPushButton[text="杂事"]:hover,
+#timeAxis QPushButton[text="杂事"]:pressed {
+    background-color: @tagChoreHoverBg@;
+}
+
+/* 拖拽连选时的高亮 */
+#timeAxis QPushButton[rangeSel="true"] {
+    border: 2px solid @accent@;
+}
+
+#timeAxis #clearBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 0;
+    border-radius: 6px;
+    border: none;
+    background-color: @danger@;
+    color: #FFFFFF;
+    width: 80px;
+}
+
+#timeAxis #clearBtn:hover   { background-color: @dangerHover@; }
+#timeAxis #clearBtn:pressed { background-color: @dangerPressed@; }
+
+#timeAxis #cancelBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 0;
+    border-radius: 6px;
+    border: none;
+    background-color: @cardAltBg@;
+    color: @textSecondary@;
+    width: 80px;
+}
+
+#timeAxis #cancelBtn:hover   { background-color: @borderSoft@; }
+#timeAxis #cancelBtn:pressed { background-color: @border@; }
+
+#timeAxis #timeLabel {
+    font-size: 12px;
+    font-weight: bold;
+    color: @accent@;
+    text-align: center;
+}
+
+#timeAxis #timeAxisBtnDialog {
+    background-color: @windowBg@;
+    border-radius: 10px;
+    border: none;
+}
+
+#timeAxis #timeAxisBtnDialog QLabel {
+    font-size: 13px;
+    font-weight: bold;
+    color: @accent@;
+    padding: 6px 0;
+    text-align: center;
+}
+
+/* ============================== 17. MonthView =========================== */
+#monthView #monthTitleLabel {
+    font-size: 15px;
+    font-weight: bold;
+    color: @accent@;
+    padding: 0 10px;
+}
+
+#monthView #monthBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid @border@;
+    background-color: @cardBg@;
+    color: @text@;
+}
+
+#monthView #monthBtn:hover {
+    background-color: @accentSoft@;
+    border-color: @accent@;
+    color: @accentHover@;
+}
+
+#monthView #monthBtn:pressed {
+    background-color: @accent@;
+    border-color: @accent@;
+    color: #FFFFFF;
+}
+
+#monthView #currentMonthBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: none;
+    background-color: @accent@;
+    color: #FFFFFF;
+}
+
+#monthView #currentMonthBtn:hover   { background-color: @accentHover@; }
+#monthView #currentMonthBtn:pressed { background-color: @accentPressed@; }
+
+#monthView #statisticsBtn {
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: none;
+    background-color: @success@;
+    color: #FFFFFF;
+}
+
+#monthView #statisticsBtn:hover   { background-color: @successHover@; }
+#monthView #statisticsBtn:pressed { background-color: @successPressed@; }
+
+#monthView #calendarGroup {
+    font-size: 13px;
+    font-weight: bold;
+    color: @accent@;
+    border: 2px solid @accentSoft@;
+    border-radius: 8px;
+    padding: 8px;
+    margin-top: 8px;
+}
+
+#monthView #weekdayLabel {
+    font-size: 12px;
+    font-weight: bold;
+    color: @accent@;
+    text-align: center;
+}
+
+/* 月视图日期格：由 MonthView 通过动态属性 dayState 标记，样式统一在这里 */
+#monthView QLabel[dayState="empty"] {
+    background-color: @emptyDayBg@;
+    border: 1px solid @emptyDayBorder@;
+    border-radius: 8px;
+    font-size: 11px;
+    color: @emptyDayText@;
+}
+
+#monthView QLabel[dayState="partial"] {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                      stop:0 @accent@, stop:1 @accentPressed@);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+#monthView QLabel[dayState="done"] {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                      stop:0 @success@, stop:1 @successPressed@);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+#monthView QLabel[dayState="today"] {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                      stop:0 @todayFrom@, stop:1 @todayTo@);
+    color: #FFFFFF;
+    border: 2px solid @todayBorder@;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+#monthView QLabel[dayState="future"] {
+    background-color: @cardAltBg@;
+    border: 1px solid @borderSoft@;
+    border-radius: 8px;
+    font-size: 11px;
+    color: @textMuted@;
+}
+
+/* ============================= 18. 统计对话框 =========================== */
+#statsDlg {
+    background-color: @cardBg@;
+    border-radius: 10px;
+    border: 1px solid @borderSoft@;
+}
+
+#statsDlg QLabel {
+    font-size: 12px;
+    color: @text@;
+}
+
+#statsDlg QScrollArea {
+    border: none;
+    background-color: @cardBg@;
+}
+
+#statsDlg QGroupBox {
+    font-size: 14px;
+    font-weight: bold;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 6px;
+    margin-top: 8px;
+    padding-top: 18px;
+}
+
+#statsDlg QScrollArea QScrollBar:vertical {
+    width: 8px;
+    background-color: @scrollTrack@;
+    border-radius: 4px;
+}
+
+#statsDlg QScrollArea QScrollBar::handle:vertical {
+    background-color: @scrollHandle@;
+    border-radius: 4px;
+}
+
+#statsDlg QScrollArea QScrollBar::handle:vertical:hover {
+    background-color: @scrollHandleHover@;
+}
+
+#statsDlg #closeBtn {
+    background-color: @accent@;
+    color: #FFFFFF;
+    font-size: 12px;
+    padding: 4px 20px;
+    border-radius: 4px;
+    border: none;
+}
+
+#statsDlg #closeBtn:hover {
+    background-color: @accentHover@;
+}
+
+/* ============================= 19. 设置对话框 =========================== */
+#settingsDlg {
+    background-color: @cardBg@;
+    border-radius: 10px;
+    border: 1px solid @borderSoft@;
+}
+
+#settingsDlg QLabel {
+    font-size: 12px;
+    color: @text@;
+    font-weight: normal;
+}
+
+#settingsDlg QComboBox {
+    min-height: 24px;
+}
+
+#settingsDlg QGroupBox {
+    font-size: 13px;
+    font-weight: bold;
+    color: @text@;
+    margin-top: 8px;
+    padding-top: 10px;
+    border: 1px solid @borderSoft@;
+    border-radius: 6px;
+}
+
+#settingsDlg QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px 0 5px;
+}
+
+#settingsDlg #memoryCleanErrorLabel {
+    color: @danger@;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+#settingsDlg #downloadNoteLabel {
+    font-size: 10px;
+    color: @textMuted@;
+    font-weight: normal;
+}

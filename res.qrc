@@ -1,7 +1,10 @@
 <RCC>
     <qresource prefix="/">
         <file>16.ico</file>
-        <file>style0.qss</file>
-        <file>style1.qss</file>
+        <file>theme.qss</file>
+        <file>icons/check.svg</file>
+        <file>icons/arrow-down.svg</file>
+        <file>icons/arrow-up.svg</file>
+        <file>icons/arrow-down-light.svg</file>
     </qresource>
 </RCC>

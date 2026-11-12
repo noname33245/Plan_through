@@ -1,13 +1,16 @@
 #include "monthview.h"
-#include "./utils/datehelper.h"
-#include "./appdatas.h"
-#include "./utils/widgetcontainer.h"
 #include "dayview.h"
+#include "heatmapwidget.h"
+#include "./appdatas.h"
+#include "./utils/dialoganimator.h"
+#include "./utils/theme.h"
+#include <QBarCategoryAxis>
+#include <QBarSeries>
+#include <QBarSet>
 
 MonthView::MonthView(QWidget *parent)
     : QWidget{parent}
 {
-    widgetContainer("monthView", this);
     this->setObjectName("monthView");
     QVBoxLayout* pageLayout = new QVBoxLayout(this);
     pageLayout->setContentsMargins(0, 0, 0, 0);
@@ -19,7 +22,7 @@ MonthView::MonthView(QWidget *parent)
     QPushButton* nextMonthBtn = new QPushButton("下月 ▶");
     QPushButton* currentMonthBtn = new QPushButton("当月");
     QPushButton* statisticsBtn = new QPushButton("学习统计");
-    m_monthTitleLabel = new QLabel(QString("%1年%2月").arg(DateHelper::currentYear()).arg(DateHelper::currentMonth()));
+    m_monthTitleLabel = new QLabel(QString("%1年%2月").arg(QDate::currentDate().year()).arg(QDate::currentDate().month()));
     m_monthTitleLabel->setObjectName("monthTitleLabel");
     m_monthTitleLabel->setAlignment(Qt::AlignCenter);
     
@@ -77,7 +80,7 @@ MonthView::MonthView(QWidget *parent)
         studyHoursLayout->addWidget(new QLabel("总学习时长："), 1, 0, 1, 1, Qt::AlignRight);
         studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getTotalStudyHours()) + " 小时"), 1, 1, 1, 1, Qt::AlignLeft);
         studyHoursLayout->addWidget(new QLabel("近一月平均每天学习时长："), 2, 0, 1, 1, Qt::AlignRight);
-        studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getRecentMonthAverageStudyHoursPerDay(), 'f', 1) + " 小时（仅统计近一月有学习记录天数）"), 2, 1, 1, 1, Qt::AlignLeft);
+        studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getRecentMonthAverageStudyHoursPerDay(), 'f', 1) + " 小时（不含今日，按有记录天数计）"), 2, 1, 1, 1, Qt::AlignLeft);
         studyHoursLayout->addWidget(new QLabel("完成项目数："), 3, 0, 1, 1, Qt::AlignRight);
         studyHoursLayout->addWidget(new QLabel(QString::number(appDatas.getCompletedProjects()) + " 个"), 3, 1, 1, 1, Qt::AlignLeft);
         studyHoursLayout->addWidget(new QLabel("最大连续学习天数："), 4, 0, 1, 1, Qt::AlignRight);
@@ -86,53 +89,163 @@ MonthView::MonthView(QWidget *parent)
         // 最近30天学习趋势折线图
         QGroupBox *lineChartGroup = new QGroupBox("最近30天学习趋势");
         QVBoxLayout *lineChartLayout = new QVBoxLayout(lineChartGroup);
-        lineChartLayout->setContentsMargins(10, 10, 10, 10);
+        lineChartLayout->setContentsMargins(6, 6, 6, 6);
         
+        // groupbox 已经有标题，图表内不再重复；图例只有一个系列也没信息量。
+        // 这几处省下的纵向空间全部让给绘图区，避免曲线被压成一条直线
         QChart *lineChart = new QChart();
-        lineChart->setTitle("学习时长趋势（小时）");
         lineChart->setAnimationOptions(QChart::SeriesAnimations);
-        
-        QLineSeries *lineSeries = new QLineSeries();
+        lineChart->legend()->setVisible(false);
+
+        // 图表不跟随系统配色，统一取当前主题色
+        {
+            const Theme::Colors &tc = Theme::colors();
+            lineChart->setBackgroundBrush(QBrush(QColor(tc.cardBg)));
+            lineChart->setBackgroundPen(Qt::NoPen);
+            lineChart->setBackgroundRoundness(0);
+            lineChart->setTitleBrush(QBrush(QColor(tc.text)));
+            lineChart->setPlotAreaBackgroundVisible(false);
+            // 默认外边距 20px，会让本来就不大的绘图区再缩一圈
+            lineChart->setMargins(QMargins(6, 6, 6, 6));
+        }
+
+        // 使用 QSplineSeries 让折线更圆滑（三次样条插值）
+        QSplineSeries *lineSeries = new QSplineSeries();
         lineSeries->setName("学习时长");
-        
+
         QDateTimeAxis *lineAxisX = new QDateTimeAxis();
         lineAxisX->setFormat("MM-dd");
-        lineAxisX->setTitleText("日期");
-        
+        lineAxisX->setLabelsBrush(QBrush(QColor(Theme::colors().textSecondary)));
+        lineAxisX->setGridLineColor(QColor(Theme::colors().borderSoft));
+        lineAxisX->setLinePenColor(QColor(Theme::colors().border));
+
         // 获取最近30天的学习数据
         QMap<QDate, DateStudyData> monthData = appDatas.getRecentStudyData(30);
         QList<QDate> monthDates = monthData.keys();
         std::sort(monthDates.begin(), monthDates.end());
-        
+
         int maxHours = 0;
         for (const QDate &date : monthDates) {
             QDateTime dateTime;
             dateTime.setDate(date);
-            int hours = monthData[date].studyHours;
+            const int hours = monthData[date].studyHours;
             lineSeries->append(dateTime.toMSecsSinceEpoch(), hours);
-            if (hours > maxHours) {
-                maxHours = hours;
-            }
+            maxHours = qMax(maxHours, hours);
         }
-        
+
+        // 30 个日期标签塞不下时 Qt 会把它们缩成 "..."，限制刻度数量即可
+        lineAxisX->setTickCount(qBound(2, monthDates.size(), 6));
+
         QValueAxis *lineAxisY = new QValueAxis();
-        lineAxisY->setTitleText("小时");
-        lineAxisY->setMin(0);
-        lineAxisY->setMax(maxHours + 1);
-        
+        // 最大值至少给到 4 小时，否则数据都很小时曲线会被放大得失去参考价值
+        lineAxisY->setRange(0, qMax(4, maxHours + 1));
+        lineAxisY->setTickCount(5);
+        lineAxisY->setLabelsBrush(QBrush(QColor(Theme::colors().textSecondary)));
+        lineAxisY->setGridLineColor(QColor(Theme::colors().borderSoft));
+        lineAxisY->setLinePenColor(QColor(Theme::colors().border));
+
         lineChart->addSeries(lineSeries);
         lineChart->addAxis(lineAxisX, Qt::AlignBottom);
         lineChart->addAxis(lineAxisY, Qt::AlignLeft);
         lineSeries->attachAxis(lineAxisX);
         lineSeries->attachAxis(lineAxisY);
-        
+
+        // 全为 0 时画出来就是一条贴底的直线，给句提示更直观
+        if (maxHours == 0) {
+            lineChart->setTitle("最近 30 天暂无学习记录");
+        }
+
+        // 线条加粗 + 圆形数据点，让曲线更清晰
+        QPen pen(QColor(Theme::colors().accent));
+        pen.setWidth(2);
+        lineSeries->setPen(pen);
+        lineSeries->setPointLabelsVisible(false);
+        lineSeries->setPointsVisible(true);
+        lineSeries->setMarkerSize(5.0);
+
         QChartView *lineChartView = new QChartView(lineChart);
         lineChartView->setRenderHint(QPainter::Antialiasing);
-        lineChartView->setMinimumHeight(150);
+        lineChartView->setMinimumHeight(240);
+        lineChartView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         lineChartLayout->addWidget(lineChartView);
 
         statsLayout->addWidget(studyHoursGroup);
         statsLayout->addWidget(lineChartGroup);
+
+        // 近一年打卡热力图
+        const QMap<QDate, DateStudyData> yearData = appDatas.getRecentStudyData(365);
+        const Theme::Colors &tc = Theme::colors();
+
+        auto *heatmapGroup = new QGroupBox("近一年打卡热力图");
+        auto *heatmapLayout = new QVBoxLayout(heatmapGroup);
+        heatmapLayout->setContentsMargins(10, 10, 10, 10);
+        auto *heatmap = new HeatmapWidget;
+        {
+            QMap<QDate, int> daily;
+            for (auto it = yearData.constBegin(); it != yearData.constEnd(); ++it) {
+                daily.insert(it.key(), it.value().studyHours);
+            }
+            heatmap->setData(daily, appDatas.targetHour());
+        }
+        heatmapLayout->addWidget(heatmap);
+        statsLayout->addWidget(heatmapGroup);
+
+        // 各时段学习次数
+        QMap<int, int> hourCount;
+        for (auto it = yearData.constBegin(); it != yearData.constEnd(); ++it) {
+            const QMap<int, TimeAxisItem> &items = it.value().timeAxisData;
+            for (auto t = items.constBegin(); t != items.constEnd(); ++t) {
+                if (t.value().type == "学习" && t.value().isCompleted) {
+                    hourCount[t.key()] += 1;
+                }
+            }
+        }
+
+        auto *barGroup = new QGroupBox("各时段学习次数");
+        auto *barLayout = new QVBoxLayout(barGroup);
+        barLayout->setContentsMargins(10, 10, 10, 10);
+
+        auto *barSet = new QBarSet("学习次数");
+        barSet->setColor(QColor(tc.accent));
+        barSet->setBorderColor(QColor(tc.accent));
+        for (int h = 0; h < 24; ++h) {
+            barSet->append(hourCount.value(h, 0));
+        }
+
+        auto *barSeries = new QBarSeries;
+        barSeries->append(barSet);
+
+        auto *barChart = new QChart;
+        barChart->addSeries(barSeries);
+        barChart->setBackgroundBrush(QBrush(QColor(tc.cardBg)));
+        barChart->setBackgroundPen(Qt::NoPen);
+        barChart->setBackgroundRoundness(0);
+        barChart->setTitle("各时段学习次数");
+        barChart->setTitleBrush(QBrush(QColor(tc.text)));
+        barChart->legend()->setVisible(false);
+
+        auto *barAxisX = new QBarCategoryAxis;
+        for (int h = 0; h < 24; ++h) {
+            barAxisX->append(QString::number(h));
+        }
+        barAxisX->setLabelsBrush(QBrush(QColor(tc.textSecondary)));
+        barAxisX->setGridLineColor(QColor(tc.borderSoft));
+
+        auto *barAxisY = new QValueAxis;
+        barAxisY->setMin(0);
+        barAxisY->setLabelsBrush(QBrush(QColor(tc.textSecondary)));
+        barAxisY->setGridLineColor(QColor(tc.borderSoft));
+
+        barChart->addAxis(barAxisX, Qt::AlignBottom);
+        barChart->addAxis(barAxisY, Qt::AlignLeft);
+        barSeries->attachAxis(barAxisX);
+        barSeries->attachAxis(barAxisY);
+
+        auto *barView = new QChartView(barChart);
+        barView->setRenderHint(QPainter::Antialiasing);
+        barView->setMinimumHeight(170);
+        barLayout->addWidget(barView);
+        statsLayout->addWidget(barGroup);
 
         // 关闭按钮
         QHBoxLayout *closeLayout = new QHBoxLayout;
@@ -149,28 +262,21 @@ MonthView::MonthView(QWidget *parent)
 
         connect(closeBtn, &QPushButton::clicked, statsDlg, &QDialog::close);
 
+        DialogAnimator::applyFadeSlideIn(statsDlg);
         statsDlg->exec();
     });
     pageLayout->addLayout(monthLayout);
 
     // 日历主体
-    int currentYear = DateHelper::currentYear();
-    int currentMonth = DateHelper::currentMonth();
+    int currentYear = QDate::currentDate().year();
+    int currentMonth = QDate::currentDate().month();
     int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
     QGroupBox* calendarGroup = new QGroupBox(QString("📅 月度学习记录                 当月总学习时长: %1小时").arg(monthStudyHours));
     calendarGroup->setObjectName("calendarGroup");
     m_monthCalendarLayout = new QGridLayout(calendarGroup);
     m_monthCalendarLayout->setSpacing(4);  // 日历单元格间距极致紧凑
     
-    // 星期标题
-    QStringList weeks = {"日", "一", "二", "三", "四", "五", "六"};
-    for (int i = 0; i < 7; ++i) {
-        QLabel* weekLab = new QLabel(weeks[i]);
-        weekLab->setStyleSheet("font-size:12px; font-weight:bold; color:#2D8CF0; text-align:center;");
-        weekLab->setAlignment(Qt::AlignCenter);
-        m_monthCalendarLayout->addWidget(weekLab, 0, i, Qt::AlignCenter);
-    }
-    calendarGroup->setLayout(m_monthCalendarLayout);
+    // 星期标题与日期格统一由 generateMonthCalendar() 生成，这里不再重复创建
     pageLayout->addWidget(calendarGroup);
 
     // 连接信号槽
@@ -181,22 +287,24 @@ MonthView::MonthView(QWidget *parent)
 
 void MonthView::switchMonth(int offset)
 {
-    DateHelper::addCaleMonth(offset);
-    m_monthTitleLabel->setText(QString("%1年%2月").arg(DateHelper::caleYear()).arg(DateHelper::caleMonth()));
+    m_month = m_month.addMonths(offset);
     generateMonthCalendar();
-    
-    QGroupBox* calendarGroup = findChild<QGroupBox*>("calendarGroup");
-    if (calendarGroup) {
-        int currentYear = DateHelper::caleYear();
-        int currentMonth = DateHelper::caleMonth();
-        int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
-        calendarGroup->setTitle(QString("📅 月度学习记录                 当月总学习时长: %1小时").arg(monthStudyHours));
+    updateMonthTitle();
+}
+
+void MonthView::updateMonthTitle()
+{
+    m_monthTitleLabel->setText(QString("%1年%2月").arg(displayYear()).arg(displayMonth()));
+
+    if (QGroupBox *calendarGroup = findChild<QGroupBox*>("calendarGroup")) {
+        const int hours = appDatas.getMonthStudyHours(displayYear(), displayMonth());
+        calendarGroup->setTitle(QString("📅 月度学习记录                 当月总学习时长: %1小时").arg(hours));
     }
 }
 
 void MonthView::generateMonthCalendar()
 {
-    const int year = DateHelper::caleYear(), month = DateHelper::caleMonth();
+    const int year = displayYear(), month = displayMonth();
     
     QLayoutItem* item;
     while ((item = m_monthCalendarLayout->takeAt(0)) != nullptr) {
@@ -209,7 +317,7 @@ void MonthView::generateMonthCalendar()
     QStringList weeks = {"日", "一", "二", "三", "四", "五", "六"};
     for (int i = 0; i < 7; ++i) {
         QLabel* weekLab = new QLabel(weeks[i]);
-        weekLab->setStyleSheet("font-size:12px;font-weight:bold;color:#2D8CF0;text-align:center;");
+        weekLab->setObjectName("weekdayLabel");
         weekLab->setAlignment(Qt::AlignCenter);
         m_monthCalendarLayout->addWidget(weekLab, 0, i, Qt::AlignCenter);
     }
@@ -234,16 +342,19 @@ void MonthView::generateMonthCalendar()
         dayLabel->setCursor(Qt::PointingHandCursor);
         
         bool isToday = (currentDate == today);
-        
+
+        // 日期格外观交由 QSS 的 [dayState="..."] 规则控制，颜色只从主题表来
+        QString dayState;
         if (isToday) {
-            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #FF6B6B,stop:1 #EE5A24);color:white;border-radius:8px;font-size:12px;font-weight:bold;border:2px solid #FFD700;");
+            dayState = "today";
         } else if (data.studyHours == 0) {
-            dayLabel->setStyleSheet("background-color:#FFFFFF;border:1px solid #F0F0F0;border-radius:8px;font-size:11px;color:#909399;");
+            dayState = "empty";
         } else if (data.studyHours >= appDatas.targetHour()) {
-            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #27AE60,stop:1 #219653);color:white;border-radius:8px;font-size:11px;font-weight:bold;");
+            dayState = "done";
         } else {
-            dayLabel->setStyleSheet("background-color:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2D8CF0,stop:1 #1D7AD9);color:white;border-radius:8px;font-size:11px;font-weight:bold;");
+            dayState = "partial";
         }
+        dayLabel->setProperty("dayState", dayState);
 
         dayLabel->installEventFilter(this);
         m_dateLabelMap[dayLabel] = currentDate;
@@ -259,17 +370,20 @@ void MonthView::generateMonthCalendar()
 
 void MonthView::setToCurrentMonth()
 {
-    DateHelper::resetDate();
-    m_monthTitleLabel->setText(QString("%1年%2月").arg(DateHelper::currentYear()).arg(DateHelper::currentMonth()));
+    const QDate today = QDate::currentDate();
+    m_month = QDate(today.year(), today.month(), 1);
+    updateMonthTitle();
     generateMonthCalendar();
-    
-    QGroupBox* calendarGroup = findChild<QGroupBox*>("calendarGroup");
-    if (calendarGroup) {
-        int currentYear = DateHelper::currentYear();
-        int currentMonth = DateHelper::currentMonth();
-        int monthStudyHours = appDatas.getMonthStudyHours(currentYear, currentMonth);
-        calendarGroup->setTitle(QString("📅 月度学习记录                 当月总学习时长: %1小时").arg(monthStudyHours));
+}
+
+void MonthView::showMonthOf(const QDate &date)
+{
+    if (!date.isValid()) {
+        return;
     }
+    m_month = QDate(date.year(), date.month(), 1);
+    updateMonthTitle();
+    generateMonthCalendar();
 }
 
 bool MonthView::eventFilter(QObject *watched, QEvent *event)
@@ -277,21 +391,16 @@ bool MonthView::eventFilter(QObject *watched, QEvent *event)
     if (event->type() == QEvent::MouseButtonPress) {
         QLabel *label = qobject_cast<QLabel*>(watched);
         if (label && m_dateLabelMap.contains(label)) {
-            QDate clickedDate = m_dateLabelMap[label];
-            
-            DateHelper::setCurrentDate(clickedDate);
-            
-            QObject *mainWindow = widgetContainer("main");
-            if (mainWindow) {
-                QMetaObject::invokeMethod(mainWindow, "switchToDayView");
-                
-                DayView *dayView = mainWindow->findChild<DayView*>("dayView");
-                if (dayView) {
-                    dayView->loadDateData(clickedDate);
-                    dayView->updateDayViewStats();
-                }
+            const QDate clickedDate = m_dateLabelMap[label];
+
+            QWidget *root = window();
+            if (auto *dayView = root ? root->findChild<DayView*>("dayView") : nullptr) {
+                dayView->setDate(clickedDate);
             }
-            
+            if (root) {
+                QMetaObject::invokeMethod(root, "switchToDayView");
+            }
+
             return true;
         }
     }
