@@ -7,3 +7,4 @@
 /Makefile.Release
 *.o
 /tests/build
+.qmake.stash
